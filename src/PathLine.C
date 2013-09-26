@@ -44,7 +44,7 @@ void vtCPathLine::execute(list<vtListTimeSeedTrace*>& listSeedTraces,
 
 
 
-void vtCPathLine::computePathLine(list<vtListTimeSeedTrace*>& listSeedTraces, list<int64_t> *listSeedIds)
+void vtCPathLine::computePathLine(list<vtListTimeSeedTrace*>& listSeedTraces, list<int64_t> *listSeedIds, list<RKInfo> *listRKInfo)
 {
 	int res;
 	float currentT; 

@@ -385,6 +385,162 @@ int vtCFieldLine::runge_kutta4(TIME_DIR time_dir,
 	return OKAY;
 }
 
+
+//////////////////////////////////////////////////////////////////////////
+// Integrate along a field line using the 4th order Runge-Kutta method.
+// This routine is used for both steady and unsteady vector fields.
+//
+// time_dir: backwards or forwards integration (value is -1 or 1)
+// time_dep: boolean indicating whether doing time dependent integration
+// ci: the current point. will hold the new point at end of the function.
+// t: the initial time. will be modified to be the correct time by the end of
+//    the integration.
+// dt: the step size
+//
+// returns FAIL or OKAY
+// (Jimmy added:) When FAIL, return integration information
+//
+//////////////////////////////////////////////////////////////////////////
+#if 1
+int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
+							   TIME_DEP time_dep,
+							   PointInfo& ci,
+							   float* t,
+							   float dt,
+							   RKInfo &RKinfo)
+{
+	int i, istat;
+	VECTOR3 pt0; // original position
+	VECTOR3 vel;
+	VECTOR3 k1, k2, k3;
+	VECTOR3 pt;
+	VECTOR3 ptsum = pt;
+	int fromCell;
+
+	pt0 = pt = ci.phyCoord;
+	// 1st step of the Runge-Kutta scheme
+	if (RKinfo.i==0) {
+		istat = m_pField->at_phys(ci.fromCell, pt, ci, *t, vel);
+		if ( istat != 1 )
+			return FAIL;
+
+		for( i=0; i<3; i++ )
+		{
+			k1[i] = time_dir*dt*vel[i];
+			ptsum[i] += k1[i] / 6.0f;
+		}
+	} else if (RKinfo.i==1) {
+		// Already know k1
+		k1 = RKinfo.ki;
+		ptsum = RKinfo.sum;
+		dt = RKinfo.dt;
+	}
+
+	// 2nd step of the Runge-Kutta scheme
+	if (RKinfo.i <= 1) {
+		fromCell = ci.inCell;
+		if ( time_dep  == UNSTEADY)
+			*t += 0.5f*time_dir*dt;
+
+		for( i=0; i<3; i++ )
+			pt[i] = pt0[i]+k1[i]*0.5f;
+
+		istat=m_pField->at_phys(fromCell, pt, ci, *t, vel);
+		if ( istat!= 1 )
+		{
+			//ci.phyCoord = pt;
+			RKinfo.i = 1;
+			RKinfo.dt = dt;
+			RKinfo.ki = k1;
+			RKinfo.sum = ptsum;
+			return FAIL;
+		}
+
+		for( i=0; i<3; i++ )
+		{
+			k2[i] = time_dir*dt*vel[i];
+			ptsum[i] += k2[i] / 3.0f;
+		}
+	} else if (RKinfo.i==2) {
+		// Already know k2
+		k2 = RKinfo.ki;
+		ptsum = RKinfo.sum;
+		dt = RKinfo.dt;
+
+		if ( time_dep  == UNSTEADY)
+			*t += 0.5f*time_dir*dt;
+	}
+
+	// 3rd step of the Runge-Kutta scheme
+	if (RKinfo.i <= 2) {
+		fromCell = ci.inCell;
+
+		for( i=0; i<3; i++ )
+			pt[i] = pt0[i]+k2[i]*0.5f;
+
+		istat=m_pField->at_phys(fromCell, pt, ci, *t, vel);
+		if ( istat != 1 )
+		{
+			//ci.phyCoord = pt;
+			RKinfo.i = 2;
+			RKinfo.dt = dt;
+			RKinfo.ki = k2;
+			RKinfo.sum = ptsum;
+			return FAIL;
+		}
+
+		for( i=0; i<3; i++ )
+		{
+			k3[i] = time_dir*dt*vel[i];
+			ptsum[i] += k3[i] / 3.0f;
+		}
+	} else if (RKinfo.i==3) {
+		// Already know k3
+		k3 = RKinfo.ki;
+		ptsum = RKinfo.sum;
+		dt = RKinfo.dt;
+
+		if ( time_dep  == UNSTEADY)
+			*t += 0.5f*time_dir*dt;
+	}
+
+	//    4th step of the Runge-Kutta scheme
+	if (RKinfo.i <= 3) {
+		if ( time_dep  == UNSTEADY)
+			*t += 0.5f*time_dir*dt;
+
+		fromCell = ci.inCell;
+
+		for( i=0; i<3; i++ )
+			pt[i] = pt0[i]+k3[i];
+
+		istat=m_pField->at_phys(fromCell, pt, ci, *t, vel);
+		if ( istat != 1 )
+		{
+			//ci.phyCoord = pt;
+			RKinfo.i = 3;
+			RKinfo.dt = dt;
+			RKinfo.ki = k3;
+			RKinfo.sum = ptsum;
+			return FAIL;
+		}
+
+		for( i=0; i<3; i++ )
+		{
+			//pt[i] = pt0[i]+(k1[i]+(float)2.0*(k2[i]+k3[i])+time_dir*dt*vel[i])/(float)6.0;
+			ptsum[i] +=time_dir*dt*vel[i] / 6.0f;
+		}
+	} else {
+		printf("Unexpected RKinfo.i=%d", i);
+		assert(false);
+	}
+
+	ci.phyCoord = pt;
+	RKinfo = RKInfo();
+
+	return OKAY;
+}
+#endif
 //////////////////////////////////////////////////////////////////////////
 // Integrate along a field line using an embedded 4th and 5th order Runge-Kutta
 // method. The actual method used is the Cash-Karp Runge-Kutta. An estimation

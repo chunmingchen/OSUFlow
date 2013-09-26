@@ -30,6 +30,15 @@ enum TIME_DEP{ STEADY=0, UNSTEADY=1 };
 enum TRACE_DIR{ OFF=0, BACKWARD_DIR=1, FORWARD_DIR=2, BACKWARD_AND_FORWARD=3};
 enum ADVECT_STATUS{ FAIL = -3, NONE = -2, OUT_OF_BOUND = -1, CRITICAL_POINT = 0, OKAY = 1};
 
+// Runge Kutta Integration Info
+struct RKInfo {
+	VECTOR3 ki; // Ki value in Runge Kutta
+	int i;
+	VECTOR3 sum; // current sum
+	float dt;    // step size
+	RKInfo (): i(0) {}
+};
+
 //////////////////////////////////////////////////////////////////////////
 // information about particles
 //////////////////////////////////////////////////////////////////////////
@@ -41,6 +50,7 @@ public:
 	int itsValidFlag;			// whether this particle is valid or not
 	int itsNumStepsAlive;		// number of steps alive
 	int ptId;					// particle ID
+	RKInfo RKinfo;
 
 public:
 	vtParticleInfo(void)
@@ -136,6 +146,7 @@ public:
 	int oneStepEmbedded(INTEG_ORD integ_ord, TIME_DIR time_dir, 
 	                    TIME_DEP time_dep, PointInfo& thisParticle, 
 	                    float* curTime, float* dt);
+	int runge_kutta4_failstat(TIME_DIR, TIME_DEP, PointInfo&, float*, float, RKInfo &);
 
 protected:
 	void releaseSeedMemory(void);
@@ -233,7 +244,7 @@ public:
 		
 protected:
 	// code specific to pathline
-	void computePathLine(list<vtListTimeSeedTrace*>&, list<int64_t> *listSeedIds = NULL);
+	void computePathLine(list<vtListTimeSeedTrace*>&, list<int64_t> *listSeedIds = NULL, list<RKInfo> *listRKInfo = NULL);
 	void computePathLine(list<vtPathlineParticle*>&);
 };
 
