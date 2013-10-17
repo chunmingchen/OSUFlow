@@ -221,12 +221,14 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 	if (curPoint.RKinfo.i==0) {
 		// if it is not from a partial result
 		seedInfo = curPoint.m_pointInfo;
+		thisParticle = seedInfo;
 		res = m_pField->at_phys(seedInfo.fromCell, seedInfo.phyCoord, seedInfo,
 								initialTime, vel);
 		if(res == OUT_OF_BOUND)  {
 			return OUT_OF_BOUND;
 		}
 	} else {
+		printf("Finishing RK4\n");
 		// If it is a partial result, finish the RK4
 		seedInfo = curPoint.m_pointInfo;
 		thisParticle = seedInfo;
@@ -235,6 +237,7 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 		if (istat != OKAY)
 			return OUT_OF_BOUND;
 
+		// Add finished RK4 result
 		VECTOR4 *p = new VECTOR4(
 				seedInfo.phyCoord[0],
 				seedInfo.phyCoord[1],
@@ -255,7 +258,7 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 			thisParticle.phyCoord[0],
 			thisParticle.phyCoord[1],
 			thisParticle.phyCoord[2],
-			curTime);
+			initialTime);
 	seedTrace.push_back(p); 
 	curTime = initialTime;
 	count++;
