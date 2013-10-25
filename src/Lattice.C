@@ -344,18 +344,23 @@ int Lattice::GetNeighbor(int myrank, float x, float y, float z, int &ei, int &ej
 
 void Lattice::InitSeedLists() {
 
-  seedlists = new list<VECTOR3>[npart]; 
+  seedlists = new list<VECTOR3>[npart];
+  seedInfoLists = new list<RKInfo>[npart];
 
-  for (int i = 0; i < npart; i++)
-    seedlists[i].clear(); 
-
+  ResetSeedLists();
 }
 //--------------------------------------------------------------------------
 
 void Lattice::ResetSeedLists() {
 
-  for (int i = 0; i < npart; i++)
-    seedlists[i].clear(); 
+  for (int i = 0; i < npart; i++) {
+    seedlists[i].clear();
+
+    list<void *>::iterator it;
+    //for (it = seedInfoLists[i].begin(); it != seedInfoLists[i].end(); ++it)
+    //	delete *it;
+    seedInfoLists[i].clear();
+  }
 
 }
 //--------------------------------------------------------------------------
@@ -364,12 +369,20 @@ void Lattice::InsertSeed(int i, int j, int k, VECTOR3 p) {
 
   int rank = GetRank(i,j,k); 
 
-  seedlists[rank].push_back(p); 
+  seedlists[rank].push_back(p);
+
+}
+void Lattice::InsertSeedInfo(int i, int j, int k, RKInfo &info) {
+
+  int rank = GetRank(i,j,k);
+
+  seedInfoLists[rank].push_back(info);
 
 }
 
 void Lattice::ClearSeedList(int rank) {
-  seedlists[rank].clear(); 
+  seedlists[rank].clear();
+  seedInfoLists[rank].clear();
 }
 //-------------------------------------------------------------------------
 //

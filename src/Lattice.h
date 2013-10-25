@@ -47,7 +47,8 @@ class  Lattice {
   void InitSeedLists(); 
   void ResetSeedLists(); 
   void ClearSeedList(int rank); 
-  void InsertSeed(int, int, int, VECTOR3); 
+  void InsertSeed(int, int, int, VECTOR3);
+  void InsertSeedInfo(int, int, int, RKInfo &info);
   void RoundRobin_proc(int n); 
   void GetPartitions(int, int**, int&); 
   void GetPartitions(int, int*, int&); 
@@ -58,6 +59,7 @@ class  Lattice {
   void GetRecvPts(int myrank, VECTOR3 *ls);
 
   list<VECTOR3> *seedlists; 
+  list<RKInfo> *seedInfoLists;
 
  private: 
 

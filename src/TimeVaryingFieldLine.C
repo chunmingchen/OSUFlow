@@ -218,7 +218,7 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 	VECTOR3 vel;
 
 	// the first particle
-	if (curPoint.RKinfo.i==0) {
+	if (curPoint.rkInfo.i==0) {
 		// if it is not from a partial result
 		seedInfo = curPoint.m_pointInfo;
 		thisParticle = seedInfo;
@@ -233,7 +233,7 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 		seedInfo = curPoint.m_pointInfo;
 		thisParticle = seedInfo;
 
-		istat = runge_kutta4_failstat(m_timeDir, UNSTEADY, thisParticle, &curTime, dt, curPoint.RKinfo);
+		istat = runge_kutta4_failstat(m_timeDir, UNSTEADY, thisParticle, &curTime, dt, curPoint.rkInfo);
 		if (istat != OKAY)
 			return OUT_OF_BOUND;
 
@@ -314,7 +314,7 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 				)
 			{
 				// Run RK4 and get the integration result
-				istat = runge_kutta4_failstat(m_timeDir, UNSTEADY, thisParticle, &curTime, dt, curPoint.RKinfo);
+				istat = runge_kutta4_failstat(m_timeDir, UNSTEADY, thisParticle, &curTime, dt, curPoint.rkInfo);
 				if (istat == FAIL)
 					return OKAY;
 				else

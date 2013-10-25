@@ -32,8 +32,8 @@ enum ADVECT_STATUS{ FAIL = -3, NONE = -2, OUT_OF_BOUND = -1, CRITICAL_POINT = 0,
 
 // Runge Kutta Integration Info
 struct RKInfo {
-	VECTOR3 ki; // Ki value in Runge Kutta
-	int i;
+	VECTOR3 ref; // the ending ref position, equals to p0+a*Ki, where a depends on the Runge-Kutta multiplier
+	int i;       // Runge-Kutta integration iteration
 	VECTOR3 sum; // current sum
 	float dt;    // step size
 	RKInfo (): i(0) {}
@@ -50,7 +50,7 @@ public:
 	int itsValidFlag;			// whether this particle is valid or not
 	int itsNumStepsAlive;		// number of steps alive
 	int ptId;					// particle ID
-	RKInfo RKinfo;
+	RKInfo rkInfo;				// runge kutta partial result -- added by Jimmy
 
 public:
 	vtParticleInfo(void)
@@ -116,7 +116,7 @@ public:
 	vtCFieldLine(CVectorField* pField);
 	virtual ~vtCFieldLine(void);
 
-	void setSeedPoints(VECTOR3* points, int numPoints, float t, int64_t *seedIds = NULL); 
+	void setSeedPoints(VECTOR3* points, int numPoints, float t, int64_t *seedIds = NULL, list<RKInfo> *pRKInfoList =NULL);
 	void setSeedPoints(VECTOR3* points, int numPoints, float* tarray);
 	void setSeedPoints(VECTOR4* points, int numPoints, int64_t *seedIds = NULL);
 	void setIntegrationOrder(INTEG_ORD ord) { m_integrationOrder = ord; }
@@ -146,8 +146,9 @@ public:
 	int oneStepEmbedded(INTEG_ORD integ_ord, TIME_DIR time_dir, 
 	                    TIME_DEP time_dep, PointInfo& thisParticle, 
 	                    float* curTime, float* dt);
+	// Jimmy added: returns Runge-Kutta incomplete information if hitting block boundary
 	int runge_kutta4_failstat(TIME_DIR, TIME_DEP, PointInfo&, float*, float, RKInfo &);
-
+	inline void setStoreRKInfo(bool b) { storeRKInfo = b; }
 protected:
 	void releaseSeedMemory(void);
 	int euler_cauchy(TIME_DIR, TIME_DEP,float*, float);
@@ -163,6 +164,8 @@ protected:
 
 	int runge_kutta2(TIME_DIR, TIME_DEP, PointInfo&, float*, float);
 	int adapt_step(const VECTOR3& p2, const VECTOR3& p1, const VECTOR3& p0, float* dt);
+
+	bool storeRKInfo;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -244,7 +247,7 @@ public:
 		
 protected:
 	// code specific to pathline
-	void computePathLine(list<vtListTimeSeedTrace*>&, list<int64_t> *listSeedIds = NULL, list<RKInfo> *listRKInfo = NULL);
+	void computePathLine(list<vtListTimeSeedTrace*>&, list<int64_t> *listSeedIds = NULL, list<RKInfo> *pRKInfoList = NULL);
 	void computePathLine(list<vtPathlineParticle*>&);
 };
 
@@ -319,7 +322,8 @@ public:
 	~vtCStreamLine(void);
 
 	void execute(const void* userData, list<vtListSeedTrace*>& listSeedTraces,
-				list<int64_t> *listSeedIds = NULL);
+				list<int64_t> *listSeedIds = NULL,
+				list<RKInfo> *pRKInfoList = NULL);
 	void setForwardTracing(int enabled);
 	void setBackwardTracing(int enabled);
 	int  getForwardTracing(void);
@@ -328,9 +332,11 @@ public:
 	int AdvectOneStep(TIME_DIR, INTEG_ORD, TIME_DEP, PointInfo&, VECTOR3&);
 
 protected:
-	void computeStreamLine(const void* userData, list<vtListSeedTrace*>& listSeedTraces, list<int64_t> *listSeedIds = NULL);
+	void computeStreamLine(const void* userData, list<vtListSeedTrace*>& listSeedTraces,
+			list<int64_t> *listSeedIds = NULL,
+			list<RKInfo> *pRKInfoList = NULL);
 	int computeFieldLine(TIME_DIR, INTEG_ORD, TIME_DEP, vtListSeedTrace&, 
-	                     PointInfo&);
+	                     PointInfo&, RKInfo &);
 
 	TRACE_DIR m_itsTraceDir;
 	float m_fPsuedoTime;

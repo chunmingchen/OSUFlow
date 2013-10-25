@@ -100,10 +100,10 @@ int vtCFieldLine::oneStepGeometric(INTEG_ORD integ_ord, TIME_DIR time_dir,
 		else if(integ_ord == FOURTH)
 			istat = runge_kutta4(time_dir, time_dep, thisParticle, curTime,*dt);
 		else
-			return OUT_OF_BOUND;
+			return FAIL;
 
-		if(istat == FAIL)
-		  return FAIL;
+		if (istat != OKAY)
+			return istat;
 
 		if(count >= 2)
 		{
@@ -161,10 +161,10 @@ int vtCFieldLine::oneStepEmbedded(INTEG_ORD integ_ord, TIME_DIR time_dir,
 			istat = runge_kutta45(time_dir, time_dep, thisParticle, 
 								  curTime, h, &errmax);
 		else
-			return OUT_OF_BOUND;
+			return FAIL;
 
-		if(istat == FAIL)
-		  return FAIL;
+		if(istat != OKAY)
+		  return istat;
 
 		// convert errmax to a ratio to see how close it is to our maximum
 		// allowed error
@@ -260,7 +260,7 @@ int vtCFieldLine::runge_kutta2(TIME_DIR time_dir,
 	// 1st step of the Runge-Kutta scheme
 	istat = m_pField->at_phys(ci.fromCell, pt, ci, *t, vel);
 	if(istat != OKAY)
-		return FAIL;
+		return OUT_OF_BOUND; // Jimmy: informs that the current position is already out of bound
 
 	for(i=0; i<3; i++)
 	{
@@ -322,7 +322,7 @@ int vtCFieldLine::runge_kutta4(TIME_DIR time_dir,
 	// 1st step of the Runge-Kutta scheme
 	istat = m_pField->at_phys(ci.fromCell, pt, ci, *t, vel);
 	if ( istat != 1 )
-		return FAIL;
+		return OUT_OF_BOUND; // Jimmy: informs that the current position is already out of bound
 
 	for( i=0; i<3; i++ )
 	{
@@ -407,37 +407,42 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 							   PointInfo& ci,
 							   float* t,
 							   float dt,
-							   RKInfo &RKinfo)
+							   RKInfo &rkInfo)
 {
 	int i, istat;
 	VECTOR3 pt0; // original position
 	VECTOR3 vel;
 	VECTOR3 k1, k2, k3;
 	VECTOR3 pt;
-	VECTOR3 ptsum = pt;
+	VECTOR3 ptsum;
 	int fromCell;
 
-	pt0 = pt = ci.phyCoord;
+	ptsum = pt0 = pt = ci.phyCoord;
 	// 1st step of the Runge-Kutta scheme
-	if (RKinfo.i==0) {
+	if (rkInfo.i==0) {
 		istat = m_pField->at_phys(ci.fromCell, pt, ci, *t, vel);
-		if ( istat != 1 )
-			return FAIL;
+		if ( istat != 1 ) {
+			rkInfo.ref = pt;
+			rkInfo.dt = dt;
+			rkInfo.i = 0;
+			printf("(RK4) fail i=0\n");
+			return OUT_OF_BOUND; // Jimmy: informs that the current position is already out of bound
+		}
 
 		for( i=0; i<3; i++ )
 		{
 			k1[i] = time_dir*dt*vel[i];
 			ptsum[i] += k1[i] / 6.0f;
 		}
-	} else if (RKinfo.i==1) {
+	} else if (rkInfo.i==1) {
 		// Already know k1
-		k1 = RKinfo.ki;
-		ptsum = RKinfo.sum;
-		dt = RKinfo.dt;
+		k1 = (rkInfo.ref-pt0)*2.f;
+		ptsum = rkInfo.sum;
+		dt = rkInfo.dt;
 	}
 
 	// 2nd step of the Runge-Kutta scheme
-	if (RKinfo.i <= 1) {
+	if (rkInfo.i <= 1) {
 		fromCell = ci.inCell;
 		if ( time_dep  == UNSTEADY)
 			*t += 0.5f*time_dir*dt;
@@ -449,10 +454,11 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 		if ( istat!= 1 )
 		{
 			//ci.phyCoord = pt;
-			RKinfo.i = 1;
-			RKinfo.dt = dt;
-			RKinfo.ki = k1;
-			RKinfo.sum = ptsum;
+			rkInfo.i = 1;
+			rkInfo.dt = dt;
+			rkInfo.ref = pt;
+			rkInfo.sum = ptsum;
+			printf("(RK4) fail i=1\n");
 			return FAIL;
 		}
 
@@ -461,18 +467,18 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 			k2[i] = time_dir*dt*vel[i];
 			ptsum[i] += k2[i] / 3.0f;
 		}
-	} else if (RKinfo.i==2) {
+	} else if (rkInfo.i==2) {
 		// Already know k2
-		k2 = RKinfo.ki;
-		ptsum = RKinfo.sum;
-		dt = RKinfo.dt;
+		k2 = (rkInfo.ref-pt0)*2.f;
+		ptsum = rkInfo.sum;
+		dt = rkInfo.dt;
 
 		if ( time_dep  == UNSTEADY)
 			*t += 0.5f*time_dir*dt;
 	}
 
 	// 3rd step of the Runge-Kutta scheme
-	if (RKinfo.i <= 2) {
+	if (rkInfo.i <= 2) {
 		fromCell = ci.inCell;
 
 		for( i=0; i<3; i++ )
@@ -482,10 +488,11 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 		if ( istat != 1 )
 		{
 			//ci.phyCoord = pt;
-			RKinfo.i = 2;
-			RKinfo.dt = dt;
-			RKinfo.ki = k2;
-			RKinfo.sum = ptsum;
+			rkInfo.i = 2;
+			rkInfo.dt = dt;
+			rkInfo.ref = pt;
+			rkInfo.sum = ptsum;
+			printf("(RK4) fail i=2\n");
 			return FAIL;
 		}
 
@@ -494,18 +501,18 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 			k3[i] = time_dir*dt*vel[i];
 			ptsum[i] += k3[i] / 3.0f;
 		}
-	} else if (RKinfo.i==3) {
+	} else if (rkInfo.i==3) {
 		// Already know k3
-		k3 = RKinfo.ki;
-		ptsum = RKinfo.sum;
-		dt = RKinfo.dt;
+		k3 = rkInfo.ref-pt0;
+		ptsum = rkInfo.sum;
+		dt = rkInfo.dt;
 
 		if ( time_dep  == UNSTEADY)
 			*t += 0.5f*time_dir*dt;
 	}
 
 	//    4th step of the Runge-Kutta scheme
-	if (RKinfo.i <= 3) {
+	if (rkInfo.i <= 3) {
 		if ( time_dep  == UNSTEADY)
 			*t += 0.5f*time_dir*dt;
 
@@ -518,10 +525,11 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 		if ( istat != 1 )
 		{
 			//ci.phyCoord = pt;
-			RKinfo.i = 3;
-			RKinfo.dt = dt;
-			RKinfo.ki = k3;
-			RKinfo.sum = ptsum;
+			rkInfo.i = 3;
+			rkInfo.dt = dt;
+			rkInfo.ref = pt;
+			rkInfo.sum = ptsum;
+			printf("(RK4) fail i=3\n");
 			return FAIL;
 		}
 
@@ -535,8 +543,8 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 		assert(false);
 	}
 
-	ci.phyCoord = pt;
-	RKinfo = RKInfo();
+	ci.phyCoord = ptsum;
+	rkInfo = RKInfo();
 
 	return OKAY;
 }
@@ -594,7 +602,7 @@ int vtCFieldLine::runge_kutta45(TIME_DIR time_dir,
 	// 1st step
 	istat = m_pField->at_phys(ci.fromCell, pt, ci, *t, vel);
 	if ( istat != 1 ) {
-		return FAIL;
+		return OUT_OF_BOUND; // Jimmy: informs that the current position is already out of bound
 	}
 	for( i=0; i<3; i++ ) {
 		k1[i] = time_dir*dt*vel[i];
@@ -765,7 +773,7 @@ int vtCFieldLine::adapt_step(const VECTOR3& p2,
 // initialize seeds
 //////////////////////////////////////////////////////////////////////////
 void vtCFieldLine::setSeedPoints(VECTOR3* points, int numPoints, float t,
-		int64_t *seedIds)
+		int64_t *seedIds, list<RKInfo> *pRKInfoList)
 {
 	int i, res;
 	VECTOR3 nodeData;
@@ -785,6 +793,11 @@ void vtCFieldLine::setSeedPoints(VECTOR3* points, int numPoints, float t,
 		}
 	}
 
+	// Jimmy added
+	list<RKInfo>::iterator RKInfoIter;
+	if (pRKInfoList)
+		RKInfoIter = pRKInfoList->begin();
+
 	if( m_nNumSeeds == 0 )
 	{
 		for(i = 0 ; i < numPoints ; i++ )
@@ -802,6 +815,13 @@ void vtCFieldLine::setSeedPoints(VECTOR3* points, int numPoints, float t,
 			res = m_pField->at_phys(-1, points[i], newParticle->m_pointInfo, t, nodeData);
 // 			newParticle->itsValidFlag =  (res == 1) ? 1 : 0 ;
 			newParticle->itsValidFlag =  1;
+
+			// Jimmy added
+			if (pRKInfoList && RKInfoIter != pRKInfoList->end()) {
+				newParticle->rkInfo = *RKInfoIter;
+				++RKInfoIter;
+			}
+
 			m_lSeeds.push_back( newParticle );
 		}
 	} 
@@ -818,6 +838,12 @@ void vtCFieldLine::setSeedPoints(VECTOR3* points, int numPoints, float t,
 			thisSeed->m_fStartTime = t;
 			res = m_pField->at_phys(-1, points[i], thisSeed->m_pointInfo, t, nodeData);
 			thisSeed->itsValidFlag =  (res == 1) ? 1 : 0 ;
+
+			// Jimmy added
+			if (pRKInfoList && RKInfoIter != pRKInfoList->end()) {
+				thisSeed->rkInfo = *RKInfoIter;
+				++RKInfoIter;
+			}
 		}    
 	}
 

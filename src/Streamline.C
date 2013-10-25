@@ -109,26 +109,33 @@ int vtCStreamLine::getBackwardTracing(void)
 //////////////////////////////////////////////////////////////////////////
 void vtCStreamLine::execute(const void* userData, 
 			    list<vtListSeedTrace*>& listSeedTraces,
-					list<int64_t> *listSeedIds)
+					list<int64_t> *listSeedIds,
+					list<RKInfo> *pRKInfoList)
 {
 	m_fCurrentTime = *(float *)userData;
-	computeStreamLine(userData, listSeedTraces, listSeedIds);
+	computeStreamLine(userData, listSeedTraces, listSeedIds, pRKInfoList);
 }
 
 void vtCStreamLine::computeStreamLine(const void* userData,
                                       list<vtListSeedTrace*>& listSeedTraces,
-                                      list<int64_t> *listSeedIds)
+                                      list<int64_t> *listSeedIds,
+                                      list<RKInfo> *pRKInfoList)
 {
 
 	vtListParticleIter sIter;
 	list<int64_t>::iterator sIdIter;
+	list<RKInfo>::iterator rkInfoIter;
 
 	if( !m_lSeedIds.empty() ) 
 		sIdIter = m_lSeedIds.begin();
 
+	if (pRKInfoList)
+		pRKInfoList->clear();
+
 	for(sIter = m_lSeeds.begin(); sIter != m_lSeeds.end(); ++sIter)
 	{
 		vtParticleInfo* thisSeed = *sIter;
+
 		if(thisSeed->itsValidFlag == 1)			// valid seed
 		{
 			if(m_itsTraceDir & BACKWARD_DIR)
@@ -136,20 +143,26 @@ void vtCStreamLine::computeStreamLine(const void* userData,
 				vtListSeedTrace* backTrace;
 				backTrace = new vtListSeedTrace;
 				computeFieldLine(BACKWARD,m_integrationOrder, STEADY, 
-				                 *backTrace, thisSeed->m_pointInfo);
+				                 *backTrace, thisSeed->m_pointInfo,
+				                 thisSeed->rkInfo);
 				listSeedTraces.push_back(backTrace);
 				if (listSeedIds != NULL)
 					(*listSeedIds).push_back(*sIdIter);
+				if (pRKInfoList)
+					pRKInfoList->push_back(thisSeed->rkInfo);
 			}
 			if(m_itsTraceDir & FORWARD_DIR)
 			{
 				vtListSeedTrace* forwardTrace;
 				forwardTrace = new vtListSeedTrace;
 				computeFieldLine(FORWARD, m_integrationOrder, STEADY,
-								 *forwardTrace, thisSeed->m_pointInfo);
+								 *forwardTrace, thisSeed->m_pointInfo,
+								 thisSeed->rkInfo);
 				listSeedTraces.push_back(forwardTrace);
 				if (listSeedIds != NULL)
 					(*listSeedIds).push_back(*sIdIter);
+				if (pRKInfoList)
+					pRKInfoList->push_back(thisSeed->rkInfo);
 			}
 		}
 		if( !m_lSeedIds.empty() ) 
@@ -161,7 +174,8 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
                                     INTEG_ORD integ_ord,
                                     TIME_DEP time_dep, 
                                     vtListSeedTrace& seedTrace,
-                                    PointInfo& seedInfo)
+                                    PointInfo& seedInfo,
+                                    RKInfo &rkInfo)
 {
 	int count = 0, istat;
 	PointInfo thisParticle, prevParticle, second_prevParticle;
@@ -170,37 +184,46 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 	VECTOR3 vel;
 	float cell_volume;
 
-	// the first point
-	istat = m_pField->at_phys(seedInfo.fromCell, seedInfo.phyCoord, seedInfo, 
-	                          m_fCurrentTime, vel);
-	if(istat == OUT_OF_BOUND)  {
-		return OUT_OF_BOUND;
-	}
-	if((fabs(vel[0]) < m_fStationaryCutoff) && 
-	   (fabs(vel[1]) < m_fStationaryCutoff) && 
-	   (fabs(vel[2]) < m_fStationaryCutoff)) {
-		return CRITICAL_POINT;
-	}
-
-	thisParticle = seedInfo;
-
+	// add the first particle
 	seedTrace.push_back(new VECTOR3(seedInfo.phyCoord));
 	curTime = m_fCurrentTime;
 	count++;
 
-	// get the initial stepsize
-	// this method was taken from the paper "Interactive Time-Dependent
-	// Particle Tracing Using Tetrahedral Decomposition", by Kenwright and Lane
-	dt = m_fInitialStepSize;
-	if(m_adaptStepSize)
-	{
-		cell_volume = m_pField->volume_of_cell(seedInfo.inCell);
-		mag = vel.GetMag();
-		if(fabs(mag) < 1.0e-6f)
-			dt_estimate = 1.0e-5f;
-		else
-			dt_estimate = pow(cell_volume, (float)0.3333333f) / mag;
-		dt = m_fInitialStepSize * dt_estimate;
+	// If seed is from a partial result, finish the RK4
+	thisParticle = seedInfo;
+	if (this->storeRKInfo && rkInfo.i>0) {
+		printf("Continue RK4. i=%d, ref=%f %f %f\n", rkInfo.i, rkInfo.ref[0], rkInfo.ref[1], rkInfo.ref[2]);
+		dt = rkInfo.dt;
+		fprintf(stdout, "thisParticle: %f, %f, %f with step size %f\n",
+		        thisParticle.phyCoord[0], thisParticle.phyCoord[1],
+		        thisParticle.phyCoord[2], dt);
+
+		istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
+		if (istat != OKAY) {
+			printf("FAIL RKi=%d, step size=%f\n", rkInfo.i, rkInfo.dt);
+			return istat;
+		}
+
+		// Add finished RK4 result
+		seedTrace.push_back(new VECTOR3(thisParticle.phyCoord));
+		count++;
+
+	} else {
+
+		// get the initial stepsize
+		// this method was taken from the paper "Interactive Time-Dependent
+		// Particle Tracing Using Tetrahedral Decomposition", by Kenwright and Lane
+		dt = m_fInitialStepSize;
+		if(m_adaptStepSize)
+		{
+			cell_volume = m_pField->volume_of_cell(seedInfo.inCell);
+			mag = vel.GetMag();
+			if(fabs(mag) < 1.0e-6f)
+				dt_estimate = 1.0e-5f;
+			else
+				dt_estimate = pow(cell_volume, (float)0.3333333f) / mag;
+			dt = m_fInitialStepSize * dt_estimate;
+		}
 	}
 
 #ifdef DEBUG
@@ -227,25 +250,41 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 			istat = oneStepEmbedded(integ_ord, time_dir, time_dep,
 			                        thisParticle, &curTime, &dt);
 
-#ifdef DEBUG
-		fprintf(fDebugOut, "point: %f, %f, %f with step size %f\n", 
+//#ifdef DEBUG
+		fprintf(stdout, "point: %f, %f, %f with step size %f\n",
 		        thisParticle.phyCoord[0], thisParticle.phyCoord[1], 
 		        thisParticle.phyCoord[2], dt);
-#endif
+//#endif
 
 		// check if the step failed
+		if (istat == OUT_OF_BOUND) {
+			printf("OUT_OF_BOUND\n");
+			return OUT_OF_BOUND;
+		}
 		if(istat == FAIL)
 		{
-			if(!m_adaptStepSize)
+			if (this->storeRKInfo || !m_adaptStepSize ||
+					dt_attempt == m_fMinStepSize)
 			{
+				// if storeRKInfo is on, we do not have to try smallerr step size
+				// ||
 				// can't change the step size, so advection just ends
-				return OKAY;
-			}
-			else if(dt_attempt == m_fMinStepSize)
-			{
+				// ||
 				// tried to take a step with the min step size, 
 				// can't go any further
-				return OKAY;
+
+				// RK4 updates thisParticle so we need to revert it.
+				thisParticle = prevParticle;
+				prevParticle = second_prevParticle;
+				second_prevParticle = third_prevParticle;
+				curTime = prevCurTime;
+
+				istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
+				if (istat!=OKAY) {
+					printf("FAIL RKi=%d, step size=%f\n", rkInfo.i, rkInfo.dt);
+					return istat;
+				}
+				printf("RK4 failstat passes\n");
 			}
 			else
 			{
@@ -263,6 +302,9 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 
 		seedTrace.push_back(new VECTOR3(thisParticle.phyCoord));
 		count++;
+		fprintf(stdout, "add trace point: %f, %f, %f with step size %f\n",
+		        thisParticle.phyCoord[0], thisParticle.phyCoord[1],
+		        thisParticle.phyCoord[2], dt);
 
 		if(!m_adaptStepSize)
 		{
@@ -275,7 +317,12 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 		// (bounds not counting ghost cells)
 		if(!m_pField->IsInRealBoundaries(thisParticle))
 		{
-			return OUT_OF_BOUND;
+			istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
+			if (istat!=OKAY) {
+				printf("in real boundary\n");
+				return istat;
+			}
+			//return OUT_OF_BOUND;
 		}
 
 		// check if point is at critical point
@@ -285,10 +332,12 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 		   (fabs(vel[1]) < m_fStationaryCutoff) && 
 		   (fabs(vel[2]) < m_fStationaryCutoff))
 		{
+			printf("critical point\n");
 			return CRITICAL_POINT;
 		}
 	}
 
+	printf("OKAY\n");
 	return OKAY;
 }
 

@@ -79,7 +79,8 @@ class OSUFlow
   bool GenStreamLines(VECTOR3*, TRACE_DIR,const int num_seeds, 
 		      const int maxPoints, list<vtListSeedTrace*>&, 
 		      int64_t *seedIds = NULL, 
-		      list<int64_t> *listSeedIds = NULL);
+		      list<int64_t> *listSeedIds = NULL,
+		      list<RKInfo> *pRKInfoAry = NULL);
   // ---  pathline methods 
   // use preset seedPtr, all seeds start at currentT 
   bool GenPathLines(VECTOR4* seeds, list<vtListTimeSeedTrace*>& listSeedTraces,
@@ -158,7 +159,7 @@ class OSUFlow
 	);
 	// ADD-BY-LEETEN 09/29/2012-END
 
-	bool HasData() { return has_data; }
+	inline bool HasData() { return has_data; }
 private:
 
  protected:
@@ -214,7 +215,6 @@ private:
   bool has_data; 
   int deferred_load_case; 
   int numTimesteps; 
-
 };
 
 #endif
