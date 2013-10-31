@@ -17,6 +17,8 @@
 //Silence an annoying and unnecessary compiler warning
 #pragma warning(disable : 4251 4100 4244)
 
+//#define DEBUG_RKINFO
+
 //////////////////////////////////////////////////////////////////////////
 // definition
 //////////////////////////////////////////////////////////////////////////
@@ -32,10 +34,11 @@ enum ADVECT_STATUS{ FAIL = -3, NONE = -2, OUT_OF_BOUND = -1, CRITICAL_POINT = 0,
 
 // Runge Kutta Integration Info
 struct RKInfo {
-	VECTOR3 ref; // the ending ref position, equals to p0+a*Ki, where a depends on the Runge-Kutta multiplier
 	int i;       // Runge-Kutta integration iteration
-	VECTOR3 sum; // current sum
+	VECTOR3 Ki;	 // Runge-Kutta Ki
 	float dt;    // step size
+	VECTOR3 sum; // current sum
+	VECTOR4 ref; // the ending ref position, equals to p0+alpha*Ki, where alpha depends on the Runge-Kutta multiplier
 	RKInfo (): i(0) {}
 };
 
@@ -336,7 +339,7 @@ protected:
 			list<int64_t> *listSeedIds = NULL,
 			list<RKInfo> *pRKInfoList = NULL);
 	int computeFieldLine(TIME_DIR, INTEG_ORD, TIME_DEP, vtListSeedTrace&, 
-	                     PointInfo&, RKInfo &);
+			vtParticleInfo&);
 
 	TRACE_DIR m_itsTraceDir;
 	float m_fPsuedoTime;

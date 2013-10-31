@@ -889,7 +889,7 @@ bool OSUFlow::GenStreamLines(VECTOR3* seeds,
 			     list<vtListSeedTrace*>& listSeedTraces,
 			     int64_t *seedIds,
 			     list<int64_t> *listSeedIds,
-			     list<RKInfo> *pRKInfoAry) // in: previous states.  out: current state
+			     list<RKInfo> *pRKInfoList) // in: previous states.  out: current state
 {
 
   if (has_data == false) DeferredLoadData(); 
@@ -919,9 +919,10 @@ bool OSUFlow::GenStreamLines(VECTOR3* seeds,
 		break;
 	}
 	InitFieldLine(pStreamLine, maxPoints);
-	if (pRKInfoAry) pStreamLine->setStoreRKInfo( true );
-	pStreamLine->setSeedPoints(seedPtr, nSeeds, currentT, seedIds, pRKInfoAry);
-	pStreamLine->execute((void *)&currentT, listSeedTraces, listSeedIds, pRKInfoAry);
+	pStreamLine->setSeedPoints(seedPtr, nSeeds, currentT, seedIds, pRKInfoList);
+
+	if (pRKInfoList) pRKInfoList->clear(); // clear the input RKInfo list and collect the output from execution
+	pStreamLine->execute((void *)&currentT, listSeedTraces, listSeedIds, pRKInfoList);
 
 	// release resource
 	delete pStreamLine;

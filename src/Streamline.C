@@ -129,8 +129,12 @@ void vtCStreamLine::computeStreamLine(const void* userData,
 	if( !m_lSeedIds.empty() ) 
 		sIdIter = m_lSeedIds.begin();
 
-	if (pRKInfoList)
+	if (pRKInfoList) {
 		pRKInfoList->clear();
+		this->storeRKInfo = true;
+	} else
+		this->storeRKInfo = false;
+
 
 	for(sIter = m_lSeeds.begin(); sIter != m_lSeeds.end(); ++sIter)
 	{
@@ -143,8 +147,7 @@ void vtCStreamLine::computeStreamLine(const void* userData,
 				vtListSeedTrace* backTrace;
 				backTrace = new vtListSeedTrace;
 				computeFieldLine(BACKWARD,m_integrationOrder, STEADY, 
-				                 *backTrace, thisSeed->m_pointInfo,
-				                 thisSeed->rkInfo);
+				                 *backTrace, *thisSeed);
 				listSeedTraces.push_back(backTrace);
 				if (listSeedIds != NULL)
 					(*listSeedIds).push_back(*sIdIter);
@@ -156,8 +159,7 @@ void vtCStreamLine::computeStreamLine(const void* userData,
 				vtListSeedTrace* forwardTrace;
 				forwardTrace = new vtListSeedTrace;
 				computeFieldLine(FORWARD, m_integrationOrder, STEADY,
-								 *forwardTrace, thisSeed->m_pointInfo,
-								 thisSeed->rkInfo);
+								 *forwardTrace, *thisSeed);
 				listSeedTraces.push_back(forwardTrace);
 				if (listSeedIds != NULL)
 					(*listSeedIds).push_back(*sIdIter);
@@ -174,9 +176,9 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
                                     INTEG_ORD integ_ord,
                                     TIME_DEP time_dep, 
                                     vtListSeedTrace& seedTrace,
-                                    PointInfo& seedInfo,
-                                    RKInfo &rkInfo)
+                                    vtParticleInfo &particleInfo)
 {
+	RKInfo &rkInfo = particleInfo.rkInfo;
 	int count = 0, istat;
 	PointInfo thisParticle, prevParticle, second_prevParticle;
 	PointInfo third_prevParticle;
@@ -184,29 +186,50 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 	VECTOR3 vel;
 	float cell_volume;
 
+	thisParticle = particleInfo.m_pointInfo;
+
 	// add the first particle
-	seedTrace.push_back(new VECTOR3(seedInfo.phyCoord));
+	seedTrace.push_back(new VECTOR3(thisParticle.phyCoord));
 	curTime = m_fCurrentTime;
 	count++;
 
-	// If seed is from a partial result, finish the RK4
-	thisParticle = seedInfo;
-	if (this->storeRKInfo && rkInfo.i>0) {
-		printf("Continue RK4. i=%d, ref=%f %f %f\n", rkInfo.i, rkInfo.ref[0], rkInfo.ref[1], rkInfo.ref[2]);
-		dt = rkInfo.dt;
-		fprintf(stdout, "thisParticle: %f, %f, %f with step size %f\n",
+#ifdef DEBUG
+	fprintf(fDebugOut, "****************new particle*****************\n");
+	fprintf(fDebugOut, "seed: %f, %f, %f with step size %f\n",
+	        thisParticle.phyCoord[0],thisParticle.phyCoord[1],thisParticle.phyCoord[2],dt);
+#endif
+
+#ifdef DEBUG_RKINFO
+		fprintf(stdout, "add first trace point: %f, %f, %f\n",
 		        thisParticle.phyCoord[0], thisParticle.phyCoord[1],
-		        thisParticle.phyCoord[2], dt);
+		        thisParticle.phyCoord[2]);
+#endif
+
+	if (this->storeRKInfo && rkInfo.i>0) {
+		// If seed is from a partial result, finish the RK4
+
+#ifdef DEBUG_RKINFO
+		printf("Continue RK4. i=%d, ref=%f %f %f dt=%f\n", rkInfo.i, rkInfo.ref[0], rkInfo.ref[1], rkInfo.ref[2], rkInfo.dt);
+#endif
+		dt = rkInfo.dt;
 
 		istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
 		if (istat != OKAY) {
+#ifdef DEBUG_RKINFO
 			printf("FAIL RKi=%d, step size=%f\n", rkInfo.i, rkInfo.dt);
+#endif
 			return istat;
 		}
 
-		// Add finished RK4 result
+		// Add just finished RK4 result
 		seedTrace.push_back(new VECTOR3(thisParticle.phyCoord));
 		count++;
+
+#ifdef DEBUG_RKINFO
+		fprintf(stdout, "add just finished trace point: %f, %f, %f with step size %f\n",
+		        thisParticle.phyCoord[0], thisParticle.phyCoord[1],
+		        thisParticle.phyCoord[2], dt);
+#endif
 
 	} else {
 
@@ -216,21 +239,18 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 		dt = m_fInitialStepSize;
 		if(m_adaptStepSize)
 		{
-			cell_volume = m_pField->volume_of_cell(seedInfo.inCell);
+			cell_volume = m_pField->volume_of_cell(thisParticle.inCell);
 			mag = vel.GetMag();
 			if(fabs(mag) < 1.0e-6f)
 				dt_estimate = 1.0e-5f;
 			else
 				dt_estimate = pow(cell_volume, (float)0.3333333f) / mag;
 			dt = m_fInitialStepSize * dt_estimate;
+
+			if(dt < m_fMinStepSize)
+				dt = m_fMinStepSize;
 		}
 	}
-
-#ifdef DEBUG
-	fprintf(fDebugOut, "****************new particle*****************\n");
-	fprintf(fDebugOut, "seed: %f, %f, %f with step size %f\n", 
-	        seedInfo.phyCoord[0],seedInfo.phyCoord[1],seedInfo.phyCoord[2],dt);
-#endif
 
 	// start to advect
 	while(count < m_nMaxsize)
@@ -250,41 +270,44 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 			istat = oneStepEmbedded(integ_ord, time_dir, time_dep,
 			                        thisParticle, &curTime, &dt);
 
-//#ifdef DEBUG
+#ifdef DEBUG_RKINFO
 		fprintf(stdout, "point: %f, %f, %f with step size %f\n",
 		        thisParticle.phyCoord[0], thisParticle.phyCoord[1], 
 		        thisParticle.phyCoord[2], dt);
-//#endif
+#endif
 
 		// check if the step failed
-		if (istat == OUT_OF_BOUND) {
+		if (istat == OUT_OF_BOUND) { // The particle itself is out of bound
+#ifdef DEBUG_RKINFO
 			printf("OUT_OF_BOUND\n");
+#endif
 			return OUT_OF_BOUND;
 		}
 		if(istat == FAIL)
 		{
-			if (this->storeRKInfo || !m_adaptStepSize ||
-					dt_attempt == m_fMinStepSize)
+			if (!m_adaptStepSize ||  // can't change the step size, so advection just ends
+					dt_attempt == m_fMinStepSize)  // tried to take a step with the min step size,
 			{
-				// if storeRKInfo is on, we do not have to try smallerr step size
-				// ||
-				// can't change the step size, so advection just ends
-				// ||
-				// tried to take a step with the min step size, 
 				// can't go any further
+				if (this->storeRKInfo) {  // get the fail status
+					// previous step updates thisParticle so we need to revert it.
+					thisParticle = prevParticle;
+					prevParticle = second_prevParticle;
+					second_prevParticle = third_prevParticle;
+					curTime = prevCurTime;
 
-				// RK4 updates thisParticle so we need to revert it.
-				thisParticle = prevParticle;
-				prevParticle = second_prevParticle;
-				second_prevParticle = third_prevParticle;
-				curTime = prevCurTime;
-
-				istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
-				if (istat!=OKAY) {
-					printf("FAIL RKi=%d, step size=%f\n", rkInfo.i, rkInfo.dt);
-					return istat;
-				}
-				printf("RK4 failstat passes\n");
+					istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
+					if (istat!=OKAY) {
+#ifdef DEBUG_RKINFO
+						printf("FAIL RKi=%d, step size=%f\n", rkInfo.i, rkInfo.dt);
+#endif
+						return istat;
+					}
+#ifdef DEBUG_RKINFO
+					printf("RK4 failstat passes\n");
+#endif
+				} else
+					return FAIL;
 			}
 			else
 			{
@@ -302,9 +325,11 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 
 		seedTrace.push_back(new VECTOR3(thisParticle.phyCoord));
 		count++;
-		fprintf(stdout, "add trace point: %f, %f, %f with step size %f\n",
+#ifdef DEBUG_RKINFO
+		printf("add trace point: %f, %f, %f with step size %f\n",
 		        thisParticle.phyCoord[0], thisParticle.phyCoord[1],
 		        thisParticle.phyCoord[2], dt);
+#endif
 
 		if(!m_adaptStepSize)
 		{
@@ -317,12 +342,20 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 		// (bounds not counting ghost cells)
 		if(!m_pField->IsInRealBoundaries(thisParticle))
 		{
-			istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
-			if (istat!=OKAY) {
-				printf("in real boundary\n");
-				return istat;
-			}
-			//return OUT_OF_BOUND;
+			if (this->storeRKInfo) {
+				istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
+				if (istat!=OKAY) {
+#ifdef DEBUG_RKINFO
+					printf("in real boundary\n");
+#endif
+					return istat;
+				}
+#ifdef DEBUG_RKINFO
+				printf("RK4 success.  Continue\n");
+#endif
+			}else
+				return OUT_OF_BOUND;
+
 		}
 
 		// check if point is at critical point
@@ -332,12 +365,16 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 		   (fabs(vel[1]) < m_fStationaryCutoff) && 
 		   (fabs(vel[2]) < m_fStationaryCutoff))
 		{
+#ifdef DEBUG_RKINFO
 			printf("critical point\n");
+#endif
 			return CRITICAL_POINT;
 		}
 	}
 
+#ifdef DEBUG_RKINFO
 	printf("OKAY\n");
+#endif
 	return OKAY;
 }
 

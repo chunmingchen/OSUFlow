@@ -382,6 +382,12 @@ int vtCFieldLine::runge_kutta4(TIME_DIR time_dir,
 	}
 	ci.phyCoord = pt;
 
+#ifdef DEBUG_RKINFO
+	printf("k1=%f %f %f\n", k1[0], k1[1], k1[2]);
+	printf("k2=%f %f %f\n", k2[0], k2[1], k2[2]);
+	printf("k3=%f %f %f\n", k3[0], k3[1], k3[2]);
+#endif
+
 	return OKAY;
 }
 
@@ -416,16 +422,20 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 	VECTOR3 pt;
 	VECTOR3 ptsum;
 	int fromCell;
+	if (rkInfo.i > 0)
+		dt = rkInfo.dt;
 
 	ptsum = pt0 = pt = ci.phyCoord;
 	// 1st step of the Runge-Kutta scheme
 	if (rkInfo.i==0) {
 		istat = m_pField->at_phys(ci.fromCell, pt, ci, *t, vel);
 		if ( istat != 1 ) {
-			rkInfo.ref = pt;
+			rkInfo.ref = VECTOR4(pt);
 			rkInfo.dt = dt;
 			rkInfo.i = 0;
+#ifdef DEBUG_RKINFO
 			printf("(RK4) fail i=0\n");
+#endif
 			return OUT_OF_BOUND; // Jimmy: informs that the current position is already out of bound
 		}
 
@@ -436,9 +446,8 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 		}
 	} else if (rkInfo.i==1) {
 		// Already know k1
-		k1 = (rkInfo.ref-pt0)*2.f;
+		k1 = rkInfo.Ki;
 		ptsum = rkInfo.sum;
-		dt = rkInfo.dt;
 	}
 
 	// 2nd step of the Runge-Kutta scheme
@@ -456,9 +465,12 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 			//ci.phyCoord = pt;
 			rkInfo.i = 1;
 			rkInfo.dt = dt;
-			rkInfo.ref = pt;
+			rkInfo.ref = VECTOR4(pt);
+			rkInfo.Ki = k1;
 			rkInfo.sum = ptsum;
+#ifdef DEBUG_RKINFO
 			printf("(RK4) fail i=1\n");
+#endif
 			return FAIL;
 		}
 
@@ -469,9 +481,8 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 		}
 	} else if (rkInfo.i==2) {
 		// Already know k2
-		k2 = (rkInfo.ref-pt0)*2.f;
+		k2 = rkInfo.Ki;
 		ptsum = rkInfo.sum;
-		dt = rkInfo.dt;
 
 		if ( time_dep  == UNSTEADY)
 			*t += 0.5f*time_dir*dt;
@@ -490,9 +501,12 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 			//ci.phyCoord = pt;
 			rkInfo.i = 2;
 			rkInfo.dt = dt;
-			rkInfo.ref = pt;
+			rkInfo.Ki = k2;
+			rkInfo.ref = VECTOR4(pt);
 			rkInfo.sum = ptsum;
+#ifdef DEBUG_RKINFO
 			printf("(RK4) fail i=2\n");
+#endif
 			return FAIL;
 		}
 
@@ -503,9 +517,8 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 		}
 	} else if (rkInfo.i==3) {
 		// Already know k3
-		k3 = rkInfo.ref-pt0;
+		k3 = rkInfo.Ki;
 		ptsum = rkInfo.sum;
-		dt = rkInfo.dt;
 
 		if ( time_dep  == UNSTEADY)
 			*t += 0.5f*time_dir*dt;
@@ -527,9 +540,12 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 			//ci.phyCoord = pt;
 			rkInfo.i = 3;
 			rkInfo.dt = dt;
-			rkInfo.ref = pt;
+			rkInfo.Ki = k3;
+			rkInfo.ref = VECTOR4(pt);
 			rkInfo.sum = ptsum;
+#ifdef DEBUG_RKINFO
 			printf("(RK4) fail i=3\n");
+#endif
 			return FAIL;
 		}
 
@@ -538,10 +554,19 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 			//pt[i] = pt0[i]+(k1[i]+(float)2.0*(k2[i]+k3[i])+time_dir*dt*vel[i])/(float)6.0;
 			ptsum[i] +=time_dir*dt*vel[i] / 6.0f;
 		}
+		rkInfo.i = 0; // success
 	} else {
+#ifdef DEBUG_RKINFO
 		printf("Unexpected RKinfo.i=%d", i);
+#endif
 		assert(false);
 	}
+
+#ifdef DEBUG_RKINFO
+	printf("failstat k1=%f %f %f\n", k1[0], k1[1], k1[2]);
+	printf("failstat k2=%f %f %f\n", k2[0], k2[1], k2[2]);
+	printf("failstat k3=%f %f %f\n", k3[0], k3[1], k3[2]);
+#endif
 
 	ci.phyCoord = ptsum;
 	rkInfo = RKInfo();
@@ -712,6 +737,15 @@ int vtCFieldLine::runge_kutta45(TIME_DIR time_dir,
 	if ( time_dep  == UNSTEADY )
 		*t += dt;
 
+#ifdef DEBUG_RKINFO
+	printf("k1=%f %f %f\n", k1[0], k1[1], k1[2]);
+	printf("k2=%f %f %f\n", k2[0], k2[1], k2[2]);
+	printf("k3=%f %f %f\n", k3[0], k3[1], k3[2]);
+	printf("k4=%f %f %f\n", k4[0], k4[1], k4[2]);
+	printf("k5=%f %f %f\n", k5[0], k5[1], k5[2]);
+	printf("k6=%f %f %f\n", k6[0], k6[1], k6[2]);
+#endif
+
 	ci.phyCoord = pt;
 	return OKAY;
 }
@@ -839,7 +873,7 @@ void vtCFieldLine::setSeedPoints(VECTOR3* points, int numPoints, float t,
 			res = m_pField->at_phys(-1, points[i], thisSeed->m_pointInfo, t, nodeData);
 			thisSeed->itsValidFlag =  (res == 1) ? 1 : 0 ;
 
-			// Jimmy added
+			// Jimmy added: store previous RKInfo to seed descriptor
 			if (pRKInfoList && RKInfoIter != pRKInfoList->end()) {
 				thisSeed->rkInfo = *RKInfoIter;
 				++RKInfoIter;
