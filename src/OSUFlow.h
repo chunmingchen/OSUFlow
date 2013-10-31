@@ -85,7 +85,8 @@ class OSUFlow
   // use preset seedPtr, all seeds start at currentT 
   bool GenPathLines(VECTOR4* seeds, list<vtListTimeSeedTrace*>& listSeedTraces,
 		    TIME_DIR, int num_seeds, int maxPoints,
-		    int64_t *seedIds = NULL, list<int64_t> *listSeedIds = NULL); 
+		    int64_t *seedIds = NULL, list<int64_t> *listSeedIds = NULL,
+		    list<RKInfo> *pRKInfoList = NULL);
   bool GenPathLines(list<vtListTimeSeedTrace*>& listSeedTraces, TIME_DIR, 
 		    int maxPoints, float currentT = 0.0);
   // use the input seed list, all seeds start at currentT 

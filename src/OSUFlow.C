@@ -1048,7 +1048,8 @@ bool OSUFlow::GenPathLines(VECTOR4* seeds,
 			   int num_seeds, 
 			   int maxPoints,
 			   int64_t *seedIds,
-			   list<int64_t> *listSeedIds)
+			   list<int64_t> *listSeedIds,
+			   list<RKInfo> *pRKInfoList) // in: previous states.  out: current state
 {
 
 	assert((seedIds == NULL && listSeedIds == NULL) ||

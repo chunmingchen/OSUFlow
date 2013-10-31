@@ -306,8 +306,9 @@ int vtCStreamLine::computeFieldLine(TIME_DIR time_dir,
 #ifdef DEBUG_RKINFO
 					printf("RK4 failstat passes\n");
 #endif
-				} else
+				} else {
 					return FAIL;
+				}
 			}
 			else
 			{
