@@ -216,77 +216,94 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 	PointInfo third_prevParticle;
 	float dt, dt_attempt, dt_estimate, cell_volume, mag, curTime, prevCurTime;
 	VECTOR3 vel;
+	RKInfo &rkInfo = curPoint.rkInfo;
 
-	// the first particle
-	if (curPoint.rkInfo.i==0) {
-		// if it is not from a partial result
-		seedInfo = curPoint.m_pointInfo;
-		thisParticle = seedInfo;
-		res = m_pField->at_phys(seedInfo.fromCell, seedInfo.phyCoord, seedInfo,
-								initialTime, vel);
-		if(res == OUT_OF_BOUND)  {
-			return OUT_OF_BOUND;
-		}
-	} else {
-		printf("Finishing RK4\n");
-		// If it is a partial result, finish the RK4
-		seedInfo = curPoint.m_pointInfo;
-		thisParticle = seedInfo;
-
-		istat = runge_kutta4_failstat(m_timeDir, UNSTEADY, thisParticle, &curTime, dt, curPoint.rkInfo);
-		if (istat != OKAY)
-			return OUT_OF_BOUND;
-
-		// Add finished RK4 result
-		VECTOR4 *p = new VECTOR4(
-				seedInfo.phyCoord[0],
-				seedInfo.phyCoord[1],
-				seedInfo.phyCoord[2],
-				initialTime);
-		seedTrace.push_back(p);
-		curTime = initialTime;
-		count++;
-	}
-
-	if((fabs(vel[0]) < m_fStationaryCutoff) && 
-	   (fabs(vel[1]) < m_fStationaryCutoff) &&
-	   (fabs(vel[2]) < m_fStationaryCutoff)) {
-		return CRITICAL_POINT;
-	}
+	seedInfo = curPoint.m_pointInfo;
+	thisParticle = seedInfo;
 
 	VECTOR4 *p = new VECTOR4(
 			thisParticle.phyCoord[0],
 			thisParticle.phyCoord[1],
 			thisParticle.phyCoord[2],
 			initialTime);
-	seedTrace.push_back(p); 
+	seedTrace.push_back(p);
 	curTime = initialTime;
 	count++;
 
-	// get the initial stepsize
-	dt = m_fInitialStepSize;
-	if(m_adaptStepSize)
-	{
-		switch(m_pField->GetCellType())
+
+	// the first step
+	if (this->storeRKInfo && curPoint.rkInfo.i > 0) {
+		// If seed is from a previous partial result, finish the RK4
+
+#ifdef DEBUG_RKINFO
+		printf("Continue RK4. i=%d, ref=%f %f %f dt=%f\n", rkInfo.i, rkInfo.ref[0], rkInfo.ref[1], rkInfo.ref[2], rkInfo.dt);
+#endif
+		dt = rkInfo.dt;
+
+		istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
+		if (istat != OKAY) {
+#ifdef DEBUG_RKINFO
+			printf("FAIL RKi=%d, step size=%f\n", rkInfo.i, rkInfo.dt);
+#endif
+			return istat;
+		}
+
+		// Add just finished RK4 result
+		seedTrace.push_back(new VECTOR4(
+				thisParticle.phyCoord[0],
+				thisParticle.phyCoord[1],
+				thisParticle.phyCoord[2],
+				curTime));
+		count++;
+
+#ifdef DEBUG_RKINFO
+		fprintf(stdout, "add just finished trace point: %f, %f, %f with step size %f\n",
+				thisParticle.phyCoord[0], thisParticle.phyCoord[1],
+				thisParticle.phyCoord[2], dt);
+#endif
+	} else {
+		// if it is not from a partial result
+		// get the initial stepsize
+		dt = m_fInitialStepSize;
+		if(m_adaptStepSize)
 		{
-		case CUBE:
-			dt = dt_estimate = m_fInitialStepSize;
-			break;
+			switch(m_pField->GetCellType())
+			{
+			case CUBE:
+				dt = dt_estimate = m_fInitialStepSize;
+				break;
 
-		case TETRAHEDRON:
-			cell_volume = m_pField->volume_of_cell(seedInfo.inCell);
-			mag = vel.GetMag();
-			if(fabs(mag) < 1.0e-6f)
-				dt_estimate = 1.0e-5f;
-			else
-				dt_estimate = pow(cell_volume, (float)0.3333333f) / mag;
-			dt = dt_estimate;
-			break;
+			case TETRAHEDRON:
+				cell_volume = m_pField->volume_of_cell(seedInfo.inCell);
+				mag = vel.GetMag();
+				if(fabs(mag) < 1.0e-6f)
+					dt_estimate = 1.0e-5f;
+				else
+					dt_estimate = pow(cell_volume, (float)0.3333333f) / mag;
+				dt = dt_estimate;
+				break;
 
-		default:
-			break;
+			default:
+				break;
+			}
 		}
 	}
+
+	// check in-bound
+	res = m_pField->at_phys(seedInfo.fromCell, seedInfo.phyCoord, seedInfo,
+							initialTime, vel);
+	if(res == OUT_OF_BOUND)  {
+		return OUT_OF_BOUND;
+	}
+
+	// check critical point
+	if((fabs(vel[0]) < m_fStationaryCutoff) &&
+	   (fabs(vel[1]) < m_fStationaryCutoff) &&
+	   (fabs(vel[2]) < m_fStationaryCutoff)) {
+		return CRITICAL_POINT;
+	}
+
+
 
 	// start to advect
 	while(count < m_nMaxsize)
@@ -308,22 +325,35 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 		// check if the step failed
 		if(istat == FAIL)
 		{
-			if( !m_adaptStepSize ||           // can't change the step size, so advection just ends
-				dt_attempt == m_fMinStepSize  // tried to take a step with the min step size, but failed,
-                                              // can't go any further
-				)
+			if (!m_adaptStepSize ||  // can't change the step size, so advection just ends
+					dt_attempt == m_fMinStepSize)  // tried to take a step with the min step size,
 			{
-				// Run RK4 and get the integration result
-				istat = runge_kutta4_failstat(m_timeDir, UNSTEADY, thisParticle, &curTime, dt, curPoint.rkInfo);
-				if (istat == FAIL)
-					return OKAY;
-				else
-					printf("istat not fail in failstat\n"); //
+				// can't go any further
+				if (this->storeRKInfo) {  // get the fail status
+					// previous step updates thisParticle so we need to revert it.
+					thisParticle = prevParticle;
+					prevParticle = second_prevParticle;
+					second_prevParticle = third_prevParticle;
+					curTime = prevCurTime;
+
+					istat = runge_kutta4_failstat(m_timeDir, STEADY, thisParticle, &curTime, dt, rkInfo);
+					if (istat!=OKAY) {
+#ifdef DEBUG_RKINFO
+						printf("FAIL RKi=%d, step size=%f\n", rkInfo.i, rkInfo.dt);
+#endif
+						return istat;
+					}
+#ifdef DEBUG_RKINFO
+					printf("RK4 failstat passes\n");
+#endif
+				} else {
+					return FAIL;
+				}
 			}
 			else
 			{
 				// try to retake the step with a smaller step size
-				dt = dt_attempt * 0.1;
+				dt = dt_attempt*0.1;
 				if(dt < m_fMinStepSize)
 					dt = m_fMinStepSize;
 				thisParticle = prevParticle;
@@ -332,6 +362,7 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 				curTime = prevCurTime;
 				continue;
 			}
+
 		}
 
 		VECTOR4 *p = new VECTOR4 (
@@ -341,6 +372,12 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 					curTime);
 		seedTrace.push_back(p); 
 		count++;
+
+#ifdef DEBUG_RKINFO
+		printf("add trace point: %f, %f, %f with step size %f\n",
+		        thisParticle.phyCoord[0], thisParticle.phyCoord[1],
+		        thisParticle.phyCoord[2], dt);
+#endif
 
 		if(!m_adaptStepSize)
 		{
@@ -365,5 +402,8 @@ int vtCTimeVaryingFieldLine::advectParticle(INTEG_ORD int_order,
 			return CRITICAL_POINT;
 	}
 
+#ifdef DEBUG_RKINFO
+	printf("OKAY\n");
+#endif
 	return OKAY;
 }

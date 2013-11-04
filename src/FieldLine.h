@@ -121,7 +121,7 @@ public:
 
 	void setSeedPoints(VECTOR3* points, int numPoints, float t, int64_t *seedIds = NULL, list<RKInfo> *pRKInfoList =NULL);
 	void setSeedPoints(VECTOR3* points, int numPoints, float* tarray);
-	void setSeedPoints(VECTOR4* points, int numPoints, int64_t *seedIds = NULL);
+	void setSeedPoints(VECTOR4* points, int numPoints, int64_t *seedIds = NULL, list<RKInfo> *pRKInfoList =NULL);
 	void setIntegrationOrder(INTEG_ORD ord) { m_integrationOrder = ord; }
 	INTEG_ORD getIntegrationOrder(void){ return m_integrationOrder; }
 	void setMaxPoints(int val) { m_nMaxsize = val; }
@@ -245,13 +245,13 @@ public:
 	vtCPathLine(CVectorField* pField);
 	~vtCPathLine(void);
 
-	void execute(list<vtListTimeSeedTrace*>& listSeedTraces, list<int64_t> *listSeedIds = NULL);
-	void execute(list<vtPathlineParticle*>& listSeedTraces);
+	void execute(list<vtListTimeSeedTrace*>& listSeedTraces, list<int64_t> *listSeedIds = NULL, list<RKInfo> *pRKInfoList = NULL);
+	void execute(list<vtPathlineParticle*>& listSeedTraces, list<RKInfo> *pRKInfoList = NULL);
 		
 protected:
 	// code specific to pathline
 	void computePathLine(list<vtListTimeSeedTrace*>&, list<int64_t> *listSeedIds = NULL, list<RKInfo> *pRKInfoList = NULL);
-	void computePathLine(list<vtPathlineParticle*>&);
+	void computePathLine(list<vtPathlineParticle*>&, list<RKInfo> *pRKInfoList = NULL);
 };
 
 //////////////////////////////////////////////////////////////////////////

@@ -29,6 +29,7 @@ list(APPEND SRC_FILES
 	StreamlineSimple 
 	StreamlineSimplePartition 
 	PathlineSimple
+	PathlineSimpleGetRK4Stat
 	# ADD-BY-LEETEN 01/06/2012-BEGIN
 	StreamlineSimplePartition1
 	StreamlineSimplePartition2

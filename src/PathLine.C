@@ -32,19 +32,19 @@ vtCPathLine::~vtCPathLine(void)
 // 
 //////////////////////////////////////////////////////////////////////////
 void vtCPathLine::execute(list<vtListTimeSeedTrace*>& listSeedTraces,
-		list<int64_t> *listSeedIds)
+		list<int64_t> *listSeedIds, list<RKInfo> *pRKInfoList )
 {
 	if (listSeedIds != NULL)
 	{
 		(*listSeedIds).clear();
 	}
 	listSeedTraces.clear();
-	computePathLine(listSeedTraces, listSeedIds);
+	computePathLine(listSeedTraces, listSeedIds, pRKInfoList);
 }
 
 
 
-void vtCPathLine::computePathLine(list<vtListTimeSeedTrace*>& listSeedTraces, list<int64_t> *listSeedIds, list<RKInfo> *listRKInfo)
+void vtCPathLine::computePathLine(list<vtListTimeSeedTrace*>& listSeedTraces, list<int64_t> *listSeedIds, list<RKInfo> *pRKInfoList)
 {
 	int res;
 	float currentT; 
@@ -55,6 +55,12 @@ void vtCPathLine::computePathLine(list<vtListTimeSeedTrace*>& listSeedTraces, li
 		vtParticleInfo* thisSeed = *pIter;
 		m_itsParticles.push_back(new vtParticleInfo(thisSeed));
 	}
+
+	if (pRKInfoList) {
+		pRKInfoList->clear();
+		this->storeRKInfo = true;
+	} else
+		this->storeRKInfo = false;
 
 	// advect
 	pIter = m_itsParticles.begin();
@@ -76,6 +82,8 @@ void vtCPathLine::computePathLine(list<vtListTimeSeedTrace*>& listSeedTraces, li
 					(*listSeedIds).push_back(*idIter);
 				}
 			}
+			if (pRKInfoList)
+				pRKInfoList->push_back(thisParticle->rkInfo);
 		}
 		if (listSeedIds != NULL)
 		{
@@ -88,7 +96,7 @@ void vtCPathLine::computePathLine(list<vtListTimeSeedTrace*>& listSeedTraces, li
 // Get particle advecting one step, none-adaptive stepsize. For each seed,
 // it only advects one step.
 //////////////////////////////////////////////////////////////////////////
-void vtCPathLine::execute(list<vtPathlineParticle*>& listSeedTraces)
+void vtCPathLine::execute(list<vtPathlineParticle*>& listSeedTraces, list<RKInfo> *pRKInfoList)
 {
 	listSeedTraces.clear();
 
@@ -102,13 +110,19 @@ void vtCPathLine::execute(list<vtPathlineParticle*>& listSeedTraces)
 		}
 	}
 		
-	computePathLine(listSeedTraces);
+	computePathLine(listSeedTraces, pRKInfoList);
 }
 
-void vtCPathLine::computePathLine(list<vtPathlineParticle*>& listSeedTraces)
+void vtCPathLine::computePathLine(list<vtPathlineParticle*>& listSeedTraces, list<RKInfo> *pRKInfoList)
 {
         float currentT; 
 	float finalT; 
+
+	if (pRKInfoList) {
+		pRKInfoList->clear();
+		this->storeRKInfo = true;
+	} else
+		this->storeRKInfo = false;
 
 	// advect the particles from this time step
 	vtListParticleIter pIter = m_itsParticles.begin();
@@ -132,6 +146,8 @@ void vtCPathLine::computePathLine(list<vtPathlineParticle*>& listSeedTraces)
 		      newParticle->ptId = thisParticle->ptId;
 		      newParticle->time = finalT; 
 		      listSeedTraces.push_back(newParticle);
+		      if (pRKInfoList)
+		        pRKInfoList->push_back(thisParticle->rkInfo);
 		    }
 		}
 	}

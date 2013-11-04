@@ -948,7 +948,7 @@ void vtCFieldLine::setSeedPoints(VECTOR3* points, int numPoints,
 // initialize seeds with possibly different start times 
 //////////////////////////////////////////////////////////////////////////
 void vtCFieldLine::setSeedPoints(VECTOR4* points, int numPoints, 
-		int64_t *seedIds)
+		int64_t *seedIds, list<RKInfo> *pRKInfoList)
 {
 	int i, res;
 	VECTOR3 nodeData;
@@ -959,6 +959,11 @@ void vtCFieldLine::setSeedPoints(VECTOR4* points, int numPoints,
 	// if the rake size has changed, forget the previous seed points
 	if( m_nNumSeeds != numPoints )
 		releaseSeedMemory();
+
+	// Jimmy added
+	list<RKInfo>::iterator RKInfoIter;
+	if (pRKInfoList)
+		RKInfoIter = pRKInfoList->begin();
 
 	if ( seedIds != NULL )
 	{
@@ -986,6 +991,13 @@ void vtCFieldLine::setSeedPoints(VECTOR4* points, int numPoints,
 			res = m_pField->at_phys(-1, pos, newParticle->m_pointInfo, points[i][3], nodeData);
 // 			newParticle->itsValidFlag =  (res == 1) ? 1 : 0 ;
 			newParticle->itsValidFlag =  1;
+
+			// Jimmy added
+			if (pRKInfoList && RKInfoIter != pRKInfoList->end()) {
+				newParticle->rkInfo = *RKInfoIter;
+				++RKInfoIter;
+			}
+
 			m_lSeeds.push_back( newParticle );
 		}
 	} 
@@ -1003,6 +1015,13 @@ void vtCFieldLine::setSeedPoints(VECTOR4* points, int numPoints,
 			thisSeed->m_fStartTime = points[i][3];
 			res = m_pField->at_phys(-1, pos, thisSeed->m_pointInfo, points[i][3], nodeData);
 			thisSeed->itsValidFlag =  (res == 1) ? 1 : 0 ;
+
+			// Jimmy added: store previous RKInfo to seed descriptor
+			if (pRKInfoList && RKInfoIter != pRKInfoList->end()) {
+				thisSeed->rkInfo = *RKInfoIter;
+				++RKInfoIter;
+			}
+
 		}    
 	}
 

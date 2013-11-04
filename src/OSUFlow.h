@@ -75,7 +75,7 @@ class OSUFlow
   void InitFieldLine(vtCFieldLine* fieldline, int maxPoints);
 
   // --- streamline methods 
-  bool GenStreamLines(list<vtListSeedTrace*>&, TRACE_DIR, int, unsigned int);
+  bool GenStreamLines(list<vtListSeedTrace*>&, TRACE_DIR, int, unsigned int, list<RKInfo> * = NULL);
   bool GenStreamLines(VECTOR3*, TRACE_DIR,const int num_seeds, 
 		      const int maxPoints, list<vtListSeedTrace*>&, 
 		      int64_t *seedIds = NULL, 
@@ -88,14 +88,15 @@ class OSUFlow
 		    int64_t *seedIds = NULL, list<int64_t> *listSeedIds = NULL,
 		    list<RKInfo> *pRKInfoList = NULL);
   bool GenPathLines(list<vtListTimeSeedTrace*>& listSeedTraces, TIME_DIR, 
-		    int maxPoints, float currentT = 0.0);
+		    int maxPoints, float currentT = 0.0,
+		    list<RKInfo> *pRKInfoList = NULL);
   // use the input seed list, all seeds start at currentT 
   bool GenPathLines(VECTOR3 * seeds, list<vtListTimeSeedTrace*>& listSeedTraces,
 		    TIME_DIR, int num_seeds, int maxPoints,
-		    float currentT = 0.0); 
+		    float currentT = 0.0);
   // use the input seed list, all seeds start at different time in tarray 
   bool GenPathLines(VECTOR3 * seeds, list<vtListTimeSeedTrace*>& listSeedTraces,
-		    TIME_DIR, int num_seeds, int maxPoints, float* tarray); 
+		    TIME_DIR, int num_seeds, int maxPoints, float* tarray);
 
   // ---  streakline methods 
   // use preset seedPtr, all seeds start at current_time 

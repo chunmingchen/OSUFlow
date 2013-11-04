@@ -835,7 +835,8 @@ void OSUFlow::InitFieldLine(vtCFieldLine* fieldline, int maxPoints)
 bool OSUFlow::GenStreamLines(list<vtListSeedTrace*>& listSeedTraces, 
 			     TRACE_DIR traceDir,
 			     int maxPoints,
-			     unsigned int randomSeed)
+			     unsigned int randomSeed,
+			     list<RKInfo> *pRKInfoList)
 {
   
   if (has_data == false) DeferredLoadData(); 
@@ -870,8 +871,10 @@ bool OSUFlow::GenStreamLines(list<vtListSeedTrace*>& listSeedTraces,
 		break;
 	}
 	InitFieldLine(pStreamLine, maxPoints);
-	pStreamLine->setSeedPoints(seedPtr, nSeeds, currentT);
-	pStreamLine->execute((void *)&currentT, listSeedTraces);
+	pStreamLine->setSeedPoints(seedPtr, nSeeds, currentT, NULL, pRKInfoList);
+
+	if (pRKInfoList) pRKInfoList->clear(); // clear the input RKInfo list and collect the output from execution
+	pStreamLine->execute((void *)&currentT, listSeedTraces, NULL, pRKInfoList);
 	// release resource
 	delete pStreamLine;
 	return true;
@@ -934,7 +937,9 @@ bool OSUFlow::GenStreamLines(VECTOR3* seeds,
 bool OSUFlow::GenPathLines(list<vtListTimeSeedTrace*>& listSeedTraces, 
 			   TIME_DIR  dir, 
 			   int maxPoints,
-			   float currentT)
+			   float currentT,
+               list<RKInfo> *pRKInfoList) // in: previous states.  out: current state
+
 {
 
   if (has_data == false) DeferredLoadData(); 
@@ -951,6 +956,7 @@ bool OSUFlow::GenPathLines(list<vtListTimeSeedTrace*>& listSeedTraces,
 	}
 
 	listSeedTraces.clear();
+	if (pRKInfoList) pRKInfoList->clear(); // clear the input RKInfo list and collect the output from execution
 
 	// execute streamline
 	vtCPathLine* pPathLine;
@@ -959,8 +965,8 @@ bool OSUFlow::GenPathLines(list<vtListTimeSeedTrace*>& listSeedTraces,
 
 	InitFieldLine(pPathLine, maxPoints);
 	pPathLine->SetTimeDir(dir); 
-	pPathLine->setSeedPoints(seedPtr, nSeeds, currentT);
-	pPathLine->execute(listSeedTraces);
+	pPathLine->setSeedPoints(seedPtr, nSeeds, currentT, NULL, pRKInfoList);
+	pPathLine->execute(listSeedTraces, NULL, pRKInfoList);
 
 	// release resource
 	delete pPathLine;
@@ -1071,14 +1077,15 @@ bool OSUFlow::GenPathLines(VECTOR4* seeds,
   }
 
   listSeedTraces.clear();
+  if (pRKInfoList) pRKInfoList->clear(); // clear the input RKInfo list and collect the output from execution
 
   // execute streamline
   vtCPathLine* pPathLine = new vtCPathLine(flowField);
   
   InitFieldLine(pPathLine, maxPoints);
   pPathLine->SetTimeDir(dir); 
-  pPathLine->setSeedPoints(seeds, nSeeds, seedIds);
-  pPathLine->execute(listSeedTraces, listSeedIds);
+  pPathLine->setSeedPoints(seeds, nSeeds, seedIds, pRKInfoList);
+  pPathLine->execute(listSeedTraces, listSeedIds, pRKInfoList);
 
   // release resource
   delete pPathLine;
