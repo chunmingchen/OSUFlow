@@ -74,7 +74,6 @@ class OSUFlow
 
   void InitFieldLine(vtCFieldLine* fieldline, int maxPoints);
 
-<<<<<<< HEAD
   // --- streamline methods 
   bool GenStreamLines(list<vtListSeedTrace*>&, TRACE_DIR, int, unsigned int, list<RKInfo> * = NULL);
   bool GenStreamLines(VECTOR3*, TRACE_DIR,const int num_seeds, 
@@ -216,16 +215,9 @@ private:
   VECTOR3 lMin, lMax; // local min/max range
   int MinT, MaxT; //local time range
   bool bStaticFlow; // static flow
-<<<<<<< HEAD
-  bool has_data; 
-  int deferred_load_case; 
-  int numTimesteps; 
-=======
   bool has_data;
   int deferred_load_case;
   int numTimesteps;
-
->>>>>>> master
 };
 
 #endif
