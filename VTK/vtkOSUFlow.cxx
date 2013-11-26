@@ -8,6 +8,9 @@
 #include "vtkTimerLog.h"
 #include "vtkInformationVector.h"
 #include "vtkNew.h"
+#include "vtkImageData.h"
+#include "vtkFloatArray.h"
+#include "vtkPointData.h"
 
 #include "VectorFieldVTK.h"
 
@@ -74,8 +77,47 @@ int vtkOSUFlow::RequestData(
 	//
 	// set data
 	if (source) {
-		CVectorField *field = new VectorFieldVTK( source );
-		osuflow->SetFlowField( field );
+		vtkImageData * image = vtkImageData::SafeDownCast(source);
+		if (image!=NULL) {
+			// use OSUFlow CVectorField
+			printf("Image data\n");
+			CVectorField* field;
+			Solution* pSolution;
+			RegularCartesianGrid* pRegularCGrid;
+			VECTOR3 min_b, max_b;
+			VECTOR4 realMin_b, realMax_b;
+
+			VECTOR3 *pVector = (VECTOR3*)image->GetScalarPointer();
+			VECTOR3 **ppVector = new VECTOR3*[1];
+			ppVector[0] = pVector;
+
+			int *dims  = image->GetDimensions();
+			int totalNum = dims[0]*dims[1]*dims[2];
+			pSolution = new Solution(ppVector, totalNum, 1);
+			pRegularCGrid = new RegularCartesianGrid(dims[0], dims[1], dims[2]);
+
+			double *bounds = image->GetBounds();
+			min_b[0] = bounds[0]; max_b[0] = bounds[1];
+			min_b[1] = bounds[2]; max_b[1] = bounds[3];
+			min_b[2] = bounds[4]; max_b[2] = bounds[5];
+			// Not exactly. TODO:
+			realMin_b[0] = min_b[0]; realMin_b[1] = min_b[1];
+			realMin_b[2] = min_b[2]; realMin_b[3] = 0;
+			realMax_b[0] = max_b[0]; realMax_b[1] = max_b[1];
+			realMax_b[2] = max_b[2]; realMax_b[3] = 0;
+
+			pRegularCGrid->SetBoundary(min_b, max_b);
+			pRegularCGrid->SetRealBoundary(realMin_b, realMax_b);
+
+			assert(pSolution != NULL && pRegularCGrid != NULL);
+
+			field = new CVectorField(pRegularCGrid, pSolution, 1);
+			osuflow->SetFlowField( field );
+
+		} else {
+			CVectorField *field = new VectorFieldVTK( source );
+			osuflow->SetFlowField( field );
+		}
 	} else if (! osuflow->HasData() ) {
 		printf("vtkOSUFlow: no data\n");
 		return 0;
@@ -128,8 +170,13 @@ int vtkOSUFlow::RequestData(
 	vtkSmartPointer<vtkCellArray> newLines = vtkSmartPointer<vtkCellArray>::New();
 	vtkSmartPointer<vtkPoints> newPts = vtkSmartPointer<vtkPoints>::New();
 	vtkSmartPointer<vtkIdList> pts = vtkSmartPointer<vtkIdList>::New();
+	vtkSmartPointer<vtkFloatArray> fieldData = vtkSmartPointer<vtkFloatArray>::New();
 
 #if 1
+	fieldData->SetNumberOfComponents(1);
+	fieldData->Allocate(1000);
+	fieldData->SetName("Curvature");
+
 	std::list<vtListSeedTrace*>::iterator pIter;
 	pIter = list.begin();
 	for (; pIter!=list.end(); pIter++) {
@@ -143,6 +190,13 @@ int vtkOSUFlow::RequestData(
 			//vtk
 			ptId = newPts->InsertNextPoint((float *)&p[0]);
 			pts->InsertNextId(ptId);
+
+			// field data
+			float q;
+			VECTOR3 vec(0,0,0);
+			//osuflow->GetFlowField()->Curvature(&p, 1, &q);
+			osuflow->GetFlowField()->at_phys(p, 0, vec);  q = vec.GetMag();
+			fieldData->InsertTuple(ptId, &q);
 
 			// clear up
 			delete *pnIter;
@@ -176,11 +230,13 @@ int vtkOSUFlow::RequestData(
 	//
 	// assign lines to output
 	//
-	if (newPts->GetNumberOfPoints() > 0)
+	//if (newPts->GetNumberOfPoints() > 0)
 	{
 		output->SetPoints(newPts);
 		printf("points=%lld\n", output->GetPoints()->GetNumberOfPoints());
 		output->SetLines(newLines);
+		int idx = output->GetPointData()->AddArray(fieldData);
+		output->GetPointData()->SetActiveAttribute(idx,  vtkDataSetAttributes::SCALARS);
 	}
 	output->Squeeze();  // need it?
 	printf("Done\n");
