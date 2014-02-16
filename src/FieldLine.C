@@ -555,9 +555,10 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 			ptsum[i] +=time_dir*dt*vel[i] / 6.0f;
 		}
 		rkInfo.i = 0; // success
+		rkInfo.ref = ptsum; // set the ref as the new particle location
 	} else {
 #ifdef DEBUG_RKINFO
-		printf("Unexpected RKinfo.i=%d", i);
+		printf("Error: Unexpected RKinfo.i=%d\n", i);
 #endif
 		assert(false);
 	}
@@ -569,7 +570,6 @@ int vtCFieldLine::runge_kutta4_failstat(TIME_DIR time_dir,
 #endif
 
 	ci.phyCoord = ptsum;
-	rkInfo = RKInfo();
 
 	return OKAY;
 }

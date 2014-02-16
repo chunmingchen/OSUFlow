@@ -63,6 +63,7 @@ char part_file[256]; // partition file name
 float size[3]; // spatial domain size
 static int tsize; // temporal domain size
 vector< vector<Particle> > Seeds; // list of seeds lists
+vector< list<RKInfo> > rkInfoLists;
 OSUFlow **osuflow; // one flow object for each block
 list<vtListTimeSeedTrace*> *sl_list; // fieldlines list
 int nspart; // global total number of spatial blocks
@@ -71,6 +72,7 @@ int nblocks; // my number of blocks
 int tf; // max number of traces per block
 int pf = 1000; // max number of points per trace in each round
 const int max_rounds = 100; // max number of rounds
+bool bSeamless = false; // seamless integration
 
 // deleted TP 10/23/12
 // const int check_rounds = 5; // how often to flush / check seeds
@@ -101,9 +103,9 @@ float wf = 0.1; // wait factor for nonblocking communication
 
 // integration parameters
 const float maxError = 0.001;
-const float initialStepSize = 1.0;
-const float minStepSize = 0.01;
-const float maxStepSize = 5.0;
+float initialStepSize = 1.0;
+float minStepSize = 0.01;
+float maxStepSize = 5.0;
 const float lowerAngleAccuracy = 3.0;
 const float upperAngleAccuracy = 15.0;
 
@@ -210,8 +212,11 @@ void Run(MPI_Comm comm) {
   float ***bil_data = NULL;
 #endif
 
+
+
   // for all groups
-  for (g = 0; g < ntpart; g++) {
+  for (g = 0; g < ntpart; g++)
+  {
 
     // check if there is any work to be done for this time group
     if(!isSeedInTimeGroupTotal(g))
@@ -242,15 +247,16 @@ void Run(MPI_Comm comm) {
 #endif
     g_io = g;
 
-    // synchronize after I/O
+      // synchronize after I/O
     MPI_Barrier(comm);
     TotInTime += (MPI_Wtime() - t0);
     t0 = MPI_Wtime();
 
-    // scale blocks to improve visibility
-    for (i = 0; i < nblocks; i++) {
+      // scale blocks to improve visibility
+    for (i = 0; i < nblocks; i++)
+    {
       if (blocks->GetLoad(i))
-	osuflow[i]->ScaleField(vec_scale);
+	    osuflow[i]->ScaleField(vec_scale);
     }
 
 #ifdef REPARTITION
@@ -260,32 +266,35 @@ void Run(MPI_Comm comm) {
 #endif
 
     // for all rounds
-    for (j = 0; j < max_rounds; j++) {
+    for (j = 0; j < max_rounds; j++)
+    {
 
       // for all blocks
-      for (i = 0; i < nblocks; i++) {
+      for (i = 0; i < nblocks; i++)
+      {
 
 #ifdef MPE
 	MPE_Log_event(compute_begin, 0, NULL);
 #endif
 
-	// compute fieldlines
-	if (tsize > 1) {
+        list<RKInfo> *pRKInfoList = bSeamless ? &rkInfoLists[i] : NULL;
+	    // compute fieldlines
+	    if (tsize > 1) {
 #ifdef REPARTITION
-	  assert(i < MAX_BLK);
-	  parflow->ComputePathlines(Seeds[i], i, pf, end_steps, &wgts[i]);
+	      assert(i < MAX_BLK);
+	      parflow->ComputePathlines(Seeds[i], i, pf, end_steps, &wgts[i], pRKInfoList);
 #else
-	  parflow->ComputePathlines(Seeds[i], i, pf, end_steps);
+    	  parflow->ComputePathlines(Seeds[i], i, pf, end_steps, NULL, pRKInfoList);
 #endif
-	}
-	else {
+	    }
+	    else {
 #ifdef REPARTITION
-	  assert(i < MAX_BLK);
-	  parflow->ComputeStreamlines(Seeds[i], i, pf, end_steps, &wgts[i]);
+	      assert(i < MAX_BLK);
+	      parflow->ComputeStreamlines(Seeds[i], i, pf, end_steps, &wgts[i], pRKInfoList);
 #else
-	  parflow->ComputeStreamlines(Seeds[i], i, pf, end_steps);
+	      parflow->ComputeStreamlines(Seeds[i], i, pf, end_steps, NULL, pRKInfoList);
 #endif
-	}
+	    }
 
 #ifdef MPE
 	MPE_Log_event(compute_end, 0, NULL);
@@ -294,7 +303,10 @@ void Run(MPI_Comm comm) {
       } // for all blocks
 
       // exchange neighbors
-      parflow->ExchangeNeighbors(Seeds, wf);
+      if (!bSeamless)
+    	  parflow->ExchangeNeighbors(Seeds, wf);
+      else
+    	  parflow->ExchangeNeighbors(Seeds, wf, rkInfoLists);
 
       // deleted TP 10/12/12
 //       if(j % check_rounds == 0)
@@ -460,6 +472,10 @@ void GetArgs(int argc, char *argv[]) {
     break;
   }
   strncpy(seed_file, argv[8], sizeof(seed_file));
+  if (argc>=10)  bSeamless = atoi(argv[9]);
+  if (argc>=11) maxStepSize = atof(argv[10]);
+  if (argc>=12) minStepSize = atof(argv[11]);
+  if (argc>=13) initialStepSize = atof(argv[12]);
 
   pf = end_steps;
 
@@ -538,6 +554,9 @@ void Init() {
   int data_size[4] = {size[0], size[1], size[2], tsize};
   int given[4] = {0, 0, 0, ntpart}; // constraints in x, y, z, t
   int ghost[8] = {1, 1, 1, 1, 1, 1, 0, 0}; // -x, +x, -y, +y, -z, +z, -t, +t
+  if (bSeamless)
+	  ghost[0] = ghost[1] = ghost[2] = ghost[3] = ghost[4] = ghost[5] = 0; // (optional) For seamless boundary integration we don't need ghost
+
   if (tsize > 1) 
     ghost[7] = 1;
   DIY_Init(4, data_size, 1, MPI_COMM_WORLD);
@@ -552,6 +571,8 @@ void Init() {
   // Seeds and fieldline list
   Seeds.resize(nblocks);
   sl_list = new list<vtListTimeSeedTrace*>[nblocks];
+  if (bSeamless)
+	  rkInfoLists.resize(nblocks);
 
   // create remaining classes
   // todo: rename
@@ -576,6 +597,7 @@ void Init() {
   parflow->SetUpperAngleAccuracy(upperAngleAccuracy);
   parflow->SetIntegrationOrder(integrationOrder);
   parflow->SetUseAdaptiveStepSize(useAdaptiveStepSize);
+  parflow->setSendRKInfo(bSeamless);
 
   TotParticles = nspart * tf;
 
@@ -876,3 +898,9 @@ int getNumSeedsInTimeGroup(int g)
   return count;
 }
 //-----------------------------------------------------------------------
+/* Change Log
+
+2/10/2014 - by Chun-Ming Chen
+Add two args: min and max step sizes
+
+*/

@@ -17,7 +17,7 @@
 //Silence an annoying and unnecessary compiler warning
 #pragma warning(disable : 4251 4100 4244)
 
-#define DEBUG_RKINFO
+//#define DEBUG_RKINFO
 
 //////////////////////////////////////////////////////////////////////////
 // definition

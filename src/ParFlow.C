@@ -129,7 +129,6 @@ ParFlow::ParFlow(Lattice4D *lat, OSUFlow **osuflow,
   assert(block_stats != NULL);
   time_stats = (double *)malloc(n_time_stats * sizeof(double));
   assert(time_stats != NULL);
-
 }
 //----------------------------------------------------------------------------
 //
@@ -296,9 +295,9 @@ void ParFlow::InitTraces(vector< vector<Particle> >& Seeds, int tf,
       seeds = osuflow[i]->GetSeeds(nseeds); 
 
       for (j = 0; j < nseeds; j++) {
-	seed.pt.Set(seeds[j][0], seeds[j][1], seeds[j][2], min_t);
-	seed.steps = 0;
-	Seeds[i].push_back(seed);
+    	seed.pt.Set(seeds[j][0], seeds[j][1], seeds[j][2], min_t);
+		seed.steps = 0;
+		Seeds[i].push_back(seed);
       }
 
     }
@@ -386,19 +385,19 @@ void ParFlow::SetIntegrationParams(OSUFlow* osuflow) {
 // w: weight of this block (output) (optional)
 //
 void ParFlow::ComputeStreamlines(const vector<Particle>& seeds, int block_num,
-				 int pf, int end_steps, int *w) {
+				 int pf, int end_steps, int *w, list<RKInfo> *pRKInfoList) {
 
   list<vtListSeedTrace*> list3; // 3D list of traces
   std::list<VECTOR3*>::iterator pt_iter3; // 3D iterator over pts in one trace
   std::list<vtListSeedTrace*>::iterator trace_iter3; // 3D iter. over traces
   VECTOR3 p3; // 3D current point
-  VECTOR4 *p = NULL; // 4D current point
   vtListTimeSeedTrace *trace; // 4D single trace
   int nseeds = seeds.size();
 
 #ifdef _MPI
   comp_time = MPI_Wtime();
 #endif
+
 
   if (nseeds > 0) {
 	
@@ -415,7 +414,15 @@ void ParFlow::ComputeStreamlines(const vector<Particle>& seeds, int block_num,
 	  
     // perform the integration
     SetIntegrationParams(osuflow[block_num]);
-    osuflow[block_num]->GenStreamLines(temp_seeds, this->integrationDir, nseeds, pf, list3);
+    osuflow[block_num]->GenStreamLines(temp_seeds, this->integrationDir, nseeds, pf, list3,
+    		NULL, NULL, pRKInfoList);
+
+    // seamless integration
+    std::list<RKInfo>::iterator rkInfo_iter;
+    if (pRKInfoList) {
+		assert(nseeds == (int)pRKInfoList->size());
+    	rkInfo_iter = pRKInfoList->begin();
+    }
 
     // copy each 3D trace to a 4D trace and then to the streamline list
     // post end point of each trace to the send list
@@ -424,9 +431,9 @@ void ParFlow::ComputeStreamlines(const vector<Particle>& seeds, int block_num,
 	 trace_iter3++)
     {
 
-      TotSteps += (*trace_iter3)->size();
+      this->TotSteps += (*trace_iter3)->size();
       if (w != NULL)
-	*w += (*trace_iter3)->size(); // number of steps accrues to block weight
+        *w += (*trace_iter3)->size(); // number of steps accrues to block weight
 
       // any  degenerate  'streamline' (with only one sample,  i.e.,  the  seed point) ZPL begin
       // MUST / SHOULD be discarded,  otherwise the  'current'  block A  would  manage
@@ -447,40 +454,47 @@ void ParFlow::ComputeStreamlines(const vector<Particle>& seeds, int block_num,
       //
       // added by Zhanping Liu on 07/03/2013
       //
-      if (    int(  ( *trace_iter3 )->size()  )    <    2    )    continue; 	    // ZPL end
+      if ( !pRKInfoList &&  int(  ( *trace_iter3 )->size()  )    <    2    )    continue; 	    // ZPL end
+      if (  pRKInfoList && ( *trace_iter3 )->size() ==0 ) continue; // Jimmy: even there comes only one point, the RKInfo may be different so we want to send it
 
 
       trace = new vtListTimeSeedTrace;
+      VECTOR4 *p = NULL;
       for (pt_iter3 = (*trace_iter3)->begin(); pt_iter3 != 
-	     (*trace_iter3)->end(); pt_iter3++) {
-	p3 = **pt_iter3;
-	p = new VECTOR4;
-	p->Set(p3[0], p3[1], p3[2], 0.0f);
-	trace->push_back(p);
+	     (*trace_iter3)->end(); pt_iter3++)
+      {
+    	  p3 = **pt_iter3;
+    	  trace->push_back(new VECTOR4(p3[0], p3[1], p3[2], 0.0f));
       }
+      assert(p);
 
-    	// find the matching seed for the trace
-    	// (need the number of steps from the seed
-    	p3 = **(*trace_iter3)->begin();
-    	while ((seeds[n].pt[0] != p3[0] ||
+      // find the matching seed for the trace
+      // (need the number of steps from the seed
+      p3 = **(*trace_iter3)->begin();
+      while ((seeds[n].pt[0] != p3[0] ||
     		  seeds[n].pt[1] != p3[1] ||
     		  seeds[n].pt[2] != p3[2])
     		  && n<nseeds ) // Jimmy modified: n stops when exceeding nseeds
-    	  	  n++;
-    	if (n == nseeds)
-  		  	 fprintf(stderr, "Error: cannot find a match between seeds and list. "
+    	  n++;
+
+      if (n == nseeds)
+  	    fprintf(stderr, "Error: cannot find a match between seeds and list. "
   		  			 "This should not happen.\n");
 
-    	// enqueue last point in the trace
-    	Item item;
-    	item.pt[0] = (*p)[0];
-    	item.pt[1] = (*p)[1];
-    	item.pt[2] = (*p)[2];
-    	item.pt[3] = (*p)[3];
-    	item.steps = seeds[n].steps + (*trace_iter3)->size();
-    	PostPoint(block_num, &item, 0, end_steps);
-    	sl_list[block_num].push_back(trace); // for later rendering
-    	n++;
+      // enqueue last point in the trace
+	  if ( ! pRKInfoList ) {
+        	Item item;
+        	item.pt = (*p);
+        	item.steps = seeds[n].steps + (*trace_iter3)->size();
+    		PostPoint(block_num, &item, 0, end_steps);
+      } else { // seamless integration
+          PostPoint(block_num, *p, seeds[n].steps + (*trace_iter3)->size(),
+        		  *rkInfo_iter, 0, end_steps);
+          ++rkInfo_iter;
+      }
+
+      sl_list[block_num].push_back(trace); // for later rendering
+      n++;
 
     }
 
@@ -517,12 +531,11 @@ void ParFlow::ComputeStreamlines(const vector<Particle>& seeds, int block_num,
 // w: weight of this block (output) (optional)
 //
 void ParFlow::ComputePathlines(const vector<Particle>& seeds, int block_num,
-			       int pf, int end_steps, int *w) {
+			       int pf, int end_steps, int *w, list<RKInfo>* pRKInfoList) {
 
   list<vtListTimeSeedTrace*> list; // list of traces
   std::list<VECTOR4*>::iterator pt_iter; // iterator over pts in one trace
   std::list<vtListTimeSeedTrace*>::iterator trace_iter; // iter. over traces
-  VECTOR4 p; // current point
   int nseeds = seeds.size();
   int loaded; // whether block is loaded
 
@@ -542,58 +555,71 @@ void ParFlow::ComputePathlines(const vector<Particle>& seeds, int block_num,
 
     // make a temporary list of seeds
     VECTOR4 *temp_seeds = new VECTOR4[nseeds];
-    for (int i = 0; i < nseeds; i++) {
-      temp_seeds[i][0]= seeds[i].pt[0];
-      temp_seeds[i][1]= seeds[i].pt[1];
-      temp_seeds[i][2]= seeds[i].pt[2];
-      temp_seeds[i][3]= seeds[i].pt[3];
-    }
+    for (int i = 0; i < nseeds; i++)
+      temp_seeds[i]= seeds[i].pt;
 
     // perform the integration
     SetIntegrationParams(osuflow[block_num]);
-    osuflow[block_num]->GenPathLines(temp_seeds, list, FORWARD, nseeds, pf); 
+    osuflow[block_num]->GenPathLines(temp_seeds, list, FORWARD, nseeds, pf,
+    		NULL, NULL, pRKInfoList);
+
+    // seamless integration
+    std::list<RKInfo>::iterator rkInfo_iter;
+    if (pRKInfoList) {
+    	rkInfo_iter = pRKInfoList->begin();
+    	assert( pRKInfoList->size() == nseeds );
+    }
 
     // copy each trace to the streamline list for later rendering
     // post end point of each trace to the send list
     int n = 0;
-    for (trace_iter = list.begin(); trace_iter != list.end(); trace_iter++) {
+    for (trace_iter = list.begin(); trace_iter != list.end(); trace_iter++)
+    {
+      if (!(*trace_iter)->size())
+        continue;
 
       TotSteps += (*trace_iter)->size();
-      if (w != NULL)
-	*w += (*trace_iter)->size(); // number of steps accrues to block weight
-      if (!(*trace_iter)->size())
-	continue;
 
-      // find the matching seed for the trace 
+      // w: weight of this block
+      if (w != NULL)
+        *w += (*trace_iter)->size(); // number of steps accrues to block weight
+
+      // find the matching seed for the trace, starting from the previous location n
       // (need the number of steps from the seed)
-      pt_iter = (*trace_iter)->begin();
-      p = **pt_iter; // start point of computed trace
-      while (n < nseeds && (seeds[n].pt[0] != p[0] || 
+      {
+    	  VECTOR4 &p = **(*trace_iter)->begin(); // start point of computed trace
+    	  while (n < nseeds && (seeds[n].pt[0] != p[0] ||
 			    seeds[n].pt[1] != p[1] ||
 			    seeds[n].pt[2] != p[2] || 
 			    seeds[n].pt[3] != p[3]))
-	n++;
+    		  n++;
+      }
 
       if (n == nseeds)
-	fprintf(stderr, "Error: cannot find a match between seeds and list. "
-		"This should not happen.\n");
+        fprintf(stderr, "Error: cannot find a match between seeds and list. "
+    			  "This should not happen.\n");
 
       // get the end point
-      pt_iter = (*trace_iter)->end();
-      pt_iter--;
-      p = **pt_iter;
+	  pt_iter = (*trace_iter)->end();
+	  pt_iter--;
+      VECTOR4 &p = **pt_iter;
 
-      // enqueue last point in trace
-      Item item;
-      item.pt[0] = p[0];
-      item.pt[1] = p[1];
-      item.pt[2] = p[2];
-      item.pt[3] = p[3];
-      item.steps = seeds[n].steps + (*trace_iter)->size();
-      PostPoint(block_num, &item, 0, end_steps);
+      if ( ! pRKInfoList ) {
+        // enqueue last point in trace
+        Item item;
+        item.pt = p;
+        item.steps = seeds[n].steps + (*trace_iter)->size();
+
+        PostPoint(block_num, &item, 0, end_steps);
+
+      } else  {
+    	// seamless integration at boundary
+    	int steps = seeds[n].steps + (*trace_iter)->size();
+        PostPoint(block_num, p, steps, *rkInfo_iter, 0, end_steps);
+        ++rkInfo_iter;
+      }
+	  n++;
       sl_list[block_num].push_back(*trace_iter); // for later rendering
-      n++;
-
     }
 
     delete[] temp_seeds;
@@ -603,14 +629,17 @@ void ParFlow::ComputePathlines(const vector<Particle>& seeds, int block_num,
   // recirculate seeds to myself if the block is not loaded yet
   if (!loaded) {
 
-    for (int i = 0; i < nseeds; i++) {
-      Item item;
-      item.pt[0] = seeds[i].pt[0];
-      item.pt[1] = seeds[i].pt[1];
-      item.pt[2] = seeds[i].pt[2];
-      item.pt[3] = seeds[i].pt[3];
-      item.steps = seeds[i].steps;
-      PostPoint(block_num, &item, 1, end_steps);  
+    if (NULL == pRKInfoList) {
+      for (int i = 0; i < nseeds; i++) {
+        Item item;
+        item.pt = seeds[i].pt;
+        item.steps = seeds[i].steps;
+        PostPoint(block_num, &item, 1, end_steps);
+      }
+    } else {
+      std::list<RKInfo>::iterator iter = pRKInfoList->begin();
+      for (int i=0; i< nseeds; i++, iter++)
+        PostPoint(block_num, seeds[i].pt, seeds[i].steps, *iter, 1, end_steps);
     }
   }
 
@@ -1460,6 +1489,36 @@ int ParFlow::ExchangeNeighbors(vector< vector<Particle> >& seeds, float wf) {
   return npr;
 
 }
+int ParFlow::ExchangeNeighbors(vector< vector<Particle> >& seeds, float wf,
+		vector<list<RKInfo> > &rkInfoLists) {
+
+  // exchange points
+  ParticleRKInfo ***items = new ParticleRKInfo**[nb];
+  int *num_items = new int[nb];
+  int npr = 0;
+//   int npr = nbhds->ExchangeNeighbors(pts, wf, &RecvItemDtype, &SendItemDtype);
+  DIY_Exchange_neighbors(0, (void ***)items, num_items, wf, &CreateDtype);
+
+  // copy received points to seeds
+  Particle seed; // one 4D seed
+  for (int i = 0; i < nb; i++) { // for each block
+    npr += num_items[i];
+    seeds[i].clear();
+    for (int j = 0; j < num_items[i]; j++) { // for each point in block
+      ParticleRKInfo *particle = items[i][j];
+      // set particle
+      seeds[i].push_back( *(Particle *)particle );
+      // convert RKSendInfo to RKInfo  (Omit ref which is not used for the input of particle tracing)
+      RKInfo rkinfo;
+      memcpy(&rkinfo, &particle->rkSendInfo, sizeof(ParticleRKInfo::RKSendInfo));
+      rkInfoLists[i].push_back( rkinfo );
+    }
+  }
+  // end TP 9/12/12
+
+  return npr;
+
+}
 //---------------------------------------------------------------------------
 //
 // completes neighbor exhange
@@ -2075,15 +2134,60 @@ void ParFlow::PostPoint(int lid, Item *item, int recirc, int end_steps) {
       	if (i == 4) return;
   }
   
-  if (item->steps < end_steps)
-    DIY_Enqueue_item_points(0, lid, item, NULL, sizeof(Item), item->pt, 
+  if (item->steps < end_steps) {
+	  DIY_Enqueue_item_points(0, lid, item, NULL, sizeof(Item), &item->pt[0],
 			    1, NULL);
+  }
   // end TP
 
 #else
 
   lat4D ? lat4D->PostPoint(lid, item->pt, recirc) : 
     latAMR->PostPoint(lid, item->pt, recirc);
+
+#endif
+
+}
+//-----------------------------------------------------------------------
+//
+// posts a point for sending * with Runge-Kutta information - Jimmy
+//
+// lid: local block id of the current block
+// item: point to be sent
+// recirc: whether to recirculate a point that does not leave the current block
+// end_steps: number of steps a particle must go before it should stop
+//
+void ParFlow::PostPoint(int lid, const VECTOR4 &pt, int steps, RKInfo &rkInfo, int recirc, int end_steps) {
+
+#ifdef _MPI
+	// With seamless integration turned on, we always have pt inside the block boundary (last trace point) and
+	// rkInfo::ref outside the block boundary (unless it finishes max steps or hits critical point)
+
+	if (!recirc) {
+		// if not recirculate, check if it is outside the boundary
+		int gid = DIY_Gid(0, lid);
+		bb_t bounds;
+		DIY_No_ghost_block_bounds(0, lid, &bounds);
+
+		// check if point is in lid and not recirculating
+		int i;
+		for (i = 0; i < 4; i++)
+			if (rkInfo.ref[i] < bounds.min[i] || rkInfo.ref[i] > bounds.max[i]) break;
+
+		if (i == 4) return;
+	}
+
+	if (steps < end_steps) {
+		ParticleRKInfo item;
+		item.pt = pt;
+		item.steps = steps;
+		memcpy(&item.rkSendInfo, &rkInfo, sizeof(ParticleRKInfo::RKSendInfo));
+		DIY_Enqueue_item_points(0, lid, &item, NULL, sizeof(ParticleRKInfo), &rkInfo.ref[0],
+				1, NULL);
+	}
+
+#else
+	assert(false); // not implemented
 
 #endif
 
@@ -2116,3 +2220,18 @@ void CreateDtype(DIY_Datatype *dtype) {
 //-----------------------------------------------------------------------
 
 #endif
+
+//---------------------  SendRK Info for seamless traces -------------------
+void ParFlow::setSendRKInfo(bool b)
+{
+#if 0
+	if (b && this->rkInfoList==NULL)
+		rkInfoList = new list<RKInfo>;
+	else if (!b && this->rkInfoList!=NULL)
+	{
+		delete this->rkInfoList;
+		this->rkInfoList = NULL;
+	}
+#endif
+}
+

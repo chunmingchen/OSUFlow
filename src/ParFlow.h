@@ -34,14 +34,26 @@
 #include <vector>
 
 struct Item {
-  float pt[4]; // position
+  VECTOR4 pt; // position
   int steps; // number of steps
 };
-  
+
 struct Particle {
   VECTOR4 pt; // particle position
   int steps; // number of steps this particle traveled so far
 };
+
+struct ParticleRKInfo {
+  VECTOR4 pt; // position
+  int steps; // number of steps
+  struct RKSendInfo {
+	  int i;       // Runge-Kutta integration iteration
+	  VECTOR3 Ki;  // Runge-Kutta Ki
+	  float dt;    // step size
+	  VECTOR3 sum; // current sum
+  } rkSendInfo;
+};
+  
   
 using namespace std;
 
@@ -71,17 +83,10 @@ class ParFlow {
 	  int **npt, int *tot_ntrace, int nb, int track_seed_id = 0);
   ~ParFlow();
   void UpdateOSUFlow(OSUFlow **osuflow);
-#if 0 // MOD-BY-LEETEN 01/17/2012-FROM:
-  void ComputePathlines(vector<Particle> seeds, int block_num, int pf, 
-			int end_steps, int *w = NULL);
-  void ComputeStreamlines(vector<Particle> seeds, int block_num, int pf, 
-			  int end_steps, int *w = NULL);
-#else // MOD-BY-LEETEN 01/17/2012-TO:
-  void ComputePathlines(const vector<Particle>& seeds, int block_num, int pf, 
-			int end_steps, int *w = NULL);
-  void ComputeStreamlines(const vector<Particle>& seeds, int block_num, int pf, 
-			  int end_steps, int *w = NULL);
-#endif // MOD-BY-LEETEN 01/17/2012-END
+  void ComputePathlines(const vector<Particle>& seeds, int block_num, int pf,
+			int end_steps, int *w = NULL, list<RKInfo> *list =NULL);
+  void ComputeStreamlines(const vector<Particle>& seeds, int block_num, int pf,
+			  int end_steps, int *w = NULL, list<RKInfo> *list =NULL);
   void GatherFieldlines(int nblocks, float *size, int tsize);
   void SerialGatherFieldlines(int nblocks, float* size, int tsize);
   int GatherNumPts(int* &ntrace, int all, int nblocks);
@@ -98,6 +103,7 @@ class ParFlow {
 		    VECTOR3 *specific_seeds = NULL, 
 		    int num_specific_seeds = 0);
   int ExchangeNeighbors(vector< vector<Particle> >& seeds, float wf);
+  int ExchangeNeighbors(vector< vector<Particle> >& seeds, float wf, vector<list<RKInfo> >&);
   int SerExchangeNeighbors(vector< vector<Particle> >& seeds);
   int FlushNeighbors(vector< vector<Particle> >& seeds);
   double GetMyCompTime() { return comp_time; }
@@ -135,12 +141,11 @@ class ParFlow {
   void SetUpperAngleAccuracy(float angle) {this->upperAngleAccuracy = angle;}
   void SetIntegrationOrder(INTEG_ORD order) {this->integrationOrder = order;}
   void SetUseAdaptiveStepSize(bool adapt) {this->useAdaptiveStepSize = adapt;}
-  // Jimmy-added begin:
+
   inline void SetIntegrationDir(TRACE_DIR dir) {this->integrationDir = dir; }
 #ifdef _MPI
-  inline void SetComm(MPI_Comm &comm_) {this->comm = comm_;}
+  inline void SetComm(MPI_Comm &comm_) {this->comm = comm_;}	// allows the application to assign its own MPI_Comm instead of using MPI_COMM_WORLD
 #endif
-  // Jimmy added end
 
   void SetIntegrationParams(OSUFlow* osuflow);
   int* flowMatrix; 
@@ -152,6 +157,9 @@ class ParFlow {
 		   int compute_type, MPI_Comm comm, int *wgts = NULL);
 #endif
 
+  // RKInfo storage for seemless traces on domain boundaries
+  void setSendRKInfo(bool b);
+  //inline bool isSendRKInfo() { return this->rkInfoList != NULL; }
  private:
 
   /* removed by TP 10/10/12 */
@@ -159,6 +167,8 @@ class ParFlow {
 /* 		     vector<vector<char *> >points); */
 
   void PostPoint(int lid, Item *item, int recirc, int end_steps);
+  void PostPoint(int lid, const VECTOR4 &pt, int steps, RKInfo &rkInfo, int recirc, int end_steps) ;
+
 
   int *block_stats; // block stats
   double *time_stats; // time stats
@@ -206,6 +216,7 @@ class ParFlow {
 #ifdef _MPI //Jimmy-added
   MPI_Comm comm;
 #endif
+
 };
 
 #ifdef _MPI
