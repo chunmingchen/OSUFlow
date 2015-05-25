@@ -38,6 +38,7 @@ link_directories(
 			gcbPathline
 			gcbFileRenderer # ADD-BY-LEETEN 10/02/2012
 			gcbStreamlineGaussian
+			gcbStreamlineGaussianPIV
 	)
 
 	# build the project as a library
