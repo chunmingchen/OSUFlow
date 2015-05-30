@@ -23,10 +23,17 @@ const int samples = 300;
 // max steps
 const int max_steps = 500;
 
+#if 1
 const float pseedx[3] = {30, 85, 140};
 const float seedy=86, seedz=1;
 const float seedwidth = 8;
 const float seedstep = 2;
+#else
+const float pseedx[3] = {30, 85, 140};
+const float seedy=86, seedz=1;
+const float seedwidth = 0;
+const float seedstep = 1;
+#endif
 
 float alpha = .01;
 
@@ -43,10 +50,10 @@ CLineRendererInOpenGL cLineRenderer;
 vector<VECTOR3> genSeeds()
 {
     vector<VECTOR3> seeds;
-    int x,y, i, count=0;
+    int x=0,y=0, i, count=0;
     for (i=0; i<3; i++)
         for (y=-seedwidth; y<=seedwidth; y+=seedstep)
-            for (x=-seedwidth; x<=seedwidth; x+=seedstep)
+            //for (x=-seedwidth; x<=seedwidth; x+=seedstep)
             {
                 seeds.push_back(VECTOR3( pseedx[i]+x, seedy+y, seedz ));
             }
