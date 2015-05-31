@@ -45,6 +45,7 @@ class Rake
 public:
 	virtual void GenSeedRandom( const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed) = 0;
 	virtual void GenSeedRegular(const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed) = 0;
+	virtual ~Rake() {};
 };
 
 class LineRake : public Rake
@@ -53,7 +54,7 @@ public:
 	LineRake();
 	void GenSeedRandom(const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed);
 	void GenSeedRegular(const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed);
-	~LineRake();
+	virtual ~LineRake();
 };
 
 class PlaneRake : public Rake
@@ -62,7 +63,7 @@ public:
 	PlaneRake();
 	void GenSeedRandom(const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed);
 	void GenSeedRegular(const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed);
-	~PlaneRake();
+	virtual ~PlaneRake();
 };
 
 class SolidRake : public Rake
@@ -71,7 +72,7 @@ public:
 	SolidRake();
 	void GenSeedRandom(const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed);
 	void GenSeedRegular(const size_t numSeeds[3], const float min[3], const float max[3], VECTOR3* pSeed);
-	~SolidRake();
+	virtual ~SolidRake();
 };
 
 #endif

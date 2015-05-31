@@ -16,5 +16,8 @@ FILE(READ ${CMAKE_CURRENT_SOURCE_DIR}/VERIFY_OUTPUT.in FILE_CONTENT)
 file (COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
 	DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
+if (WITH_MPI)
 add_subdirectory (TestMPI)
+endif(WITH_MPI)
+
 add_subdirectory (TestSerial)
