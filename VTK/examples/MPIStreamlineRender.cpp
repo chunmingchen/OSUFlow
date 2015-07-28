@@ -1,9 +1,12 @@
 // Reference: VTK/Examples/VisualizationAlgorithms/Python/StreamlinesWithLineWidget.py
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
 
 #include <list>
 #include <iterator>
+
+#include "mpi.h"
 
 #include "vtkDataSet.h"
 #include "vtkStructuredGrid.h"
@@ -32,14 +35,23 @@
 #include <vtkCompositeRenderManager.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
 
+#define USE_VTK
+
 // streamline
+#ifndef USE_VTK
 #include "vtkPOSUFlow.h"
-//#include "vtkPStreamTracer.h"
+#else
+#include "vtkPStreamTracer.h"
+#endif
 
 using namespace std;
 
 vtkLineWidget *lineWidget;
+#ifdef USE_VTK
+vtkStreamTracer *streamer;
+#else
 vtkPOSUFlow *streamer;
+#endif
 vtkRenderWindow *renWin;
 vtkPolyData *seeds ;
 
@@ -78,19 +90,24 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
 	// setdata
 	reader->SetFileName(SAMPLE_DATA_DIR "/regular/tornado/1.vti");
 
-	//reader->Update();
 	//int *extent = reader->GetOutput()->GetExtent(); // vtkImageData::SafeDownCast(reader->GetOutputDataObject(0))->GetExtent();
 	//printf("Extent: %d %d %d %d %d %d\n", extent[0], extent[1], extent[2], extent[3], extent[4], extent[5]);
 
 #else
-	vtkMultiBlockPLOT3DReader *pl3dReader = vtkMultiBlockPLOT3DReader::New();
+    // read PLOT3D data
+    char file1[256], file2[256];
+    sprintf(file1, "%s/curvilinear/combxyz.bin", SAMPLE_DATA_DIR); //t->GetDataRoot());
+    printf("%s\n", file1);
+    sprintf(file2, "%s/curvilinear/combq.bin", SAMPLE_DATA_DIR); //t->GetDataRoot());
+
+	vtkMultiBlockPLOT3DReader *reader = vtkMultiBlockPLOT3DReader::New();
 	// set data
-	pl3dReader->SetXYZFileName(file1);
-	pl3dReader->SetQFileName(file2);
-	pl3dReader->SetScalarFunctionNumber(100);
-	pl3dReader->SetVectorFunctionNumber(202);
-	pl3dReader->Update();
-	vtkDataSet *data = vtkDataSet::SafeDownCast(pl3dReader->GetOutput()->GetBlock(0));
+	reader->SetXYZFileName(file1);
+	reader->SetQFileName(file2);
+	reader->SetScalarFunctionNumber(100);
+	reader->SetVectorFunctionNumber(202);
+	//reader->Update();
+	//vtkDataSet *data = vtkDataSet::SafeDownCast(pl3dReader->GetOutput()->GetBlock(0));
 #endif
 
 	//
@@ -120,7 +137,7 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
 #endif
 
 
-#if 0
+#ifndef USE_VTK
 	//
 	// vtkOSUFlow
 	//
@@ -144,6 +161,7 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
 
 
 	streamer->Update();
+    streamer->GetOutput()->Print(std::cout);
 #if 0 // run more times
 	rake->SetPoint1(0,0,0); //extent[0], extent[2], extent[4]);
 	rake->SetPoint2(37,37,37); //extent[1], extent[3], extent[5]);
@@ -213,7 +231,7 @@ void MyMain( vtkMultiProcessController *controller, void *arg )
 		//callback->SetCallback(computeStreamlines);
 		//lineWidget->AddObserver(vtkCommand::EndInteractionEvent, callback);
 
-		//ren->AddActor(rakeActor);
+		ren->AddActor(rakeActor);
 		ren->AddActor(actor);
 		ren->AddActor(outlineActor);
 		ren->SetBackground(.5,.5,.5);
